@@ -8,6 +8,21 @@ from KEYS import *
 
 current_menu = "main_menu"
 
+def escape_string(str):
+    output = ""
+
+    for char in str:
+        if char == "<":
+            output += "&lt;"
+        elif char == ">":
+            output += "&gt;"
+        elif char == "&":
+            output += "&amp;"
+        else:
+            output += char
+
+    return output
+
 def create_connection(host_name, user_name, user_password, db_name):
     connection = None
     try:
@@ -67,10 +82,11 @@ def make_main_menu():
     return markup
 
 def main_menu_handler(message):
+    current_menu = "main_menu"
     if message.text == 'Створити таску':
         bot.send_message(message.chat.id,'Иди работай')
     elif message.text == 'Переглянути таски':
-        bot.send_message(message.chat.id,'Целая куча, иди работай')
+        show_tasks_as_buttons(message)
     elif message.text == 'Список членів СПФ':
         bot.send_message(message.chat.id, get_table_to_print(connection, "SELECT * FROM members", None), parse_mode='MarkdownV2')
     elif message.text == 'Звіт про помилку':
@@ -78,6 +94,22 @@ def main_menu_handler(message):
     else:
         bot.send_message(message.chat.id,'Не зрозумів')
 
+def show_tasks_as_buttons(message):
+    markup = telebot.types.InlineKeyboardMarkup()
+    description, response = query_db(connection, "SELECT * FROM tasks", None)
+    i = 1
+    for elem in response:
+        markup.add(telebot.types.InlineKeyboardButton(text=elem[1], callback_data=elem[0]))
+        i+=1
+    bot.send_message(message.chat.id, text="Оберіть завдання", reply_markup=markup)
+
+def show_task_by_id(call):
+    markup = telebot.types.InlineKeyboardMarkup()
+    description, response = query_db(connection, "SELECT * FROM tasks WHERE TaskID = %s", (call.data,))
+    formatted = "<b>{}</b> - {}\n\n{}\n\n<i>{} - {}</i>\n\n<b>{}</b>\n\n<i>{}</i>\n\n".format(escape_string(response[0][1]), response[0][0], escape_string(response[0][2]), response[0][4], response[0][5], response[0][6], escape_string(response[0][3]))
+    print(formatted)
+    bot.send_message(call.from_user.id, formatted, parse_mode='HTML')
+    
 def text_message_handler(message):
     if message.chat.type == 'private':
         match current_menu:
@@ -96,5 +128,12 @@ def send_welcome(message):
 @bot.message_handler(func=lambda message: True)
 def reply_to_message(message):
     text_message_handler(message)
+
+@bot.callback_query_handler(func=lambda call: True)    
+def query_handler(call):
+    match call.message.text:
+        case "Оберіть завдання":
+            show_task_by_id(call)
+
 
 bot.infinity_polling()
