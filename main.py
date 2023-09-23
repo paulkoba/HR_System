@@ -6,6 +6,8 @@ from prettytable import PrettyTable, from_db_cursor
 
 from KEYS import *
 
+current_menu = "main_menu"
+
 def create_connection(host_name, user_name, user_password, db_name):
     connection = None
     try:
@@ -64,7 +66,7 @@ def make_main_menu():
     markup.add(item3, item4)
     return markup
 
-def menu_handler(message):
+def main_menu_handler(message):
     if message.text == 'Створити таску':
         bot.send_message(message.chat.id,'Иди работай')
     elif message.text == 'Переглянути таски':
@@ -78,7 +80,11 @@ def menu_handler(message):
 
 def text_message_handler(message):
     if message.chat.type == 'private':
-        menu_handler(message)
+        match current_menu:
+            case "main_menu":
+                main_menu_handler(message)
+            case _:
+                print("Invalid state {}".format(current_menu))
     
 
 @bot.message_handler(commands=['start', 'help'])
