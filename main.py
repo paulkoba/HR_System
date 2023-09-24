@@ -6,7 +6,17 @@ from prettytable import PrettyTable, from_db_cursor
 
 from KEYS import *
 
-current_menu = "main_menu"
+current_menus = {}
+
+def get_state_by_chat_id(chat_id):
+    global current_menus
+    if chat_id not in current_menus:
+        current_menus[chat_id] = "main_menu"
+    return current_menus[chat_id]
+
+def set_state_given_chat_id(chat_id, state):
+    global current_menus
+    current_menus[chat_id] = state
 
 def escape_string(str):
     output = ""
@@ -82,9 +92,7 @@ def make_main_menu():
     return markup
 
 def main_menu_handler(message):
-    global current_menu
-
-    current_menu = "main_menu"
+    set_state_given_chat_id(message.chat.id, "main_menu")
     if message.text == 'Створити таску':
         create_task(message)
         bot.send_message(message.chat.id,'Иди работай')
@@ -113,7 +121,7 @@ def show_task_by_id(call):
     bot.send_message(call.from_user.id, formatted, parse_mode='HTML')
     
 def text_message_handler(message):
-    global current_menu
+    current_menu = get_state_by_chat_id(message.chat.id)
 
     if message.chat.type == 'private':
         match current_menu:
@@ -156,17 +164,17 @@ def create_edit_task_menu():
     return markup
 
 def create_task(message):
-    global current_menu
+    current_menu = get_state_by_chat_id(message.chat.id)
 
     match current_menu:
         case "main_menu":
-            current_menu = "create_task_name"
+            set_state_given_chat_id(message.chat.id, "create_task_name")
             bot.send_message(message.chat.id,'Введіть назву завдання', reply_markup=create_cancel_menu())
         case "create_task_name":
-            current_menu = "create_task_description"
+            set_state_given_chat_id(message.chat.id, "create_task_description")
             bot.send_message(message.chat.id,'Введіть опис завдання', reply_markup=create_cancel_menu())
         case "create_task_description":
-            current_menu = "create_task_optionals"
+            set_state_given_chat_id(message.chat.id, "create_task_optionals")
             bot.send_message(message.chat.id,'Заповніть опціональні поля та підтвердіть створення завдання', reply_markup=create_edit_task_menu())
 
     
