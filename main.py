@@ -6,33 +6,6 @@ from prettytable import PrettyTable, from_db_cursor
 
 from KEYS import *
 
-current_menus = {}
-
-def get_state_by_chat_id(chat_id):
-    global current_menus
-    if chat_id not in current_menus:
-        current_menus[chat_id] = "main_menu"
-    return current_menus[chat_id]
-
-def set_state_given_chat_id(chat_id, state):
-    global current_menus
-    current_menus[chat_id] = state
-
-def escape_string(str):
-    output = ""
-
-    for char in str:
-        if char == "<":
-            output += "&lt;"
-        elif char == ">":
-            output += "&gt;"
-        elif char == "&":
-            output += "&amp;"
-        else:
-            output += char
-
-    return output
-
 def create_connection(host_name, user_name, user_password, db_name):
     connection = None
     try:
@@ -50,10 +23,6 @@ def create_connection(host_name, user_name, user_password, db_name):
 
     return connection
 
-connection = create_connection(IP, USERNAME, PASSWORD, "spf_management")
-
-bot = telebot.TeleBot(TOKEN)
-
 def query_db(connection, query, parameters):
     cursor = connection.cursor()
 
@@ -68,6 +37,43 @@ def query_db(connection, query, parameters):
 
     except Error as e :
         print(f"The error '{e}' occurred")
+
+connection = create_connection(IP, USERNAME, PASSWORD, "spf_management")
+
+bot = telebot.TeleBot(TOKEN)
+
+def get_state_by_chat_id(chat_id):
+    _, response = query_db(connection, "SELECT State FROM _states WHERE ChatID = %s", (chat_id,))
+
+    if len(response) == 0:
+        set_state_given_chat_id(chat_id, "main_menu")
+        _, response = query_db(connection, "SELECT State FROM _states WHERE ChatID = %s", (chat_id,))
+
+    print("Received state {}".format(response[0][0]))
+    return response[0][0]
+
+def set_state_given_chat_id(chat_id, state):
+    _, response = query_db(connection, "SELECT * FROM _states WHERE ChatID = %s", (chat_id,))
+
+    if response:
+        query_db(connection, "UPDATE _states SET State = %s WHERE ChatID = %s", (state, chat_id))
+    else:
+        query_db(connection, "INSERT INTO _states (ChatID, State) VALUES (%s, %s)", (chat_id, state));
+
+def escape_string(str):
+    output = ""
+
+    for char in str:
+        if char == "<":
+            output += "&lt;"
+        elif char == ">":
+            output += "&gt;"
+        elif char == "&":
+            output += "&amp;"
+        else:
+            output += char
+
+    return output
 
 def format_table_form_query_result(response, description, **kwargs):
     table = PrettyTable(**kwargs)
