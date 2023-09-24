@@ -7,6 +7,18 @@ from enum import Enum
 
 from KEYS import *
 
+class Task:
+    name = ""
+    description = ""
+    roles = []
+    assignees = []
+    due_date = "1970-01-01 00:00:00"
+    creation_date = "1970-01-01 00:00:00"
+    attachments = []
+    estimate = 0
+    author = 0
+
+task_under_construction = Task()
 
 class States(Enum):
     MAIN_MENU = 1
@@ -135,7 +147,7 @@ def show_tasks_as_buttons(message):
 def show_task_by_id(call):
     markup = telebot.types.InlineKeyboardMarkup()
     description, response = query_db(connection, "SELECT * FROM tasks WHERE TaskID = %s", (call.data,))
-    formatted = "<b>{}</b> - {}\n\n{}\n\n<i>{} - {}</i>\n\n<b>{}</b>\n\n<i>{}</i>\n\n".format(escape_string(response[0][1]), response[0][0], escape_string(response[0][2]), response[0][4], response[0][5], response[0][6], escape_string(response[0][3]))
+    formatted = "<b>{}</b> - {}\n\n{}\n\n<i>{} - {}</i>\n\n<b>{}</b>\n\n<i>{}</i>\n\n".format(escape_string(response[0][1]), response[0][0], escape_string(response[0][2]), response[0][4], response[0][5], response[0][6], response[0][3])
     bot.send_message(call.from_user.id, formatted, parse_mode='HTML')
     
 def text_message_handler(message):
@@ -175,36 +187,53 @@ def create_edit_task_menu():
     item6=types.KeyboardButton("Прикріплення")
     item7=types.KeyboardButton("Estimate")
     item8=types.KeyboardButton("Назад")
-    item9=types.KeyboardButton("Створити")
+    item9=types.KeyboardButton("Preview")
+    item10=types.KeyboardButton("Створити")
 
     markup.add(item1, item2)
     markup.add(item3, item4)
     markup.add(item5, item6, item7)
-    markup.add(item8, item9)
+    markup.add(item8, item9, item10)
 
     return markup
 
+def execute_create_task(task, message):
+    _, response = query_db(connection, "INSERT INTO spf_management.tasks (TaskName, TaskDescription, AuthorID, CreationDate, DueDate, Estimate, Attachment) VALUES (%s, %s, %s, %s, %s, %s, %s)", (task.name, task.description, task.author, task.creation_date, task.due_date, task.estimate, ' '.join(task.attachments)))
+    pass
+
 def create_task(current_menu, message):
+    global task_under_construction
+
     match current_menu:
         case States.MAIN_MENU:
+            task_under_construction = Task()
             set_state(message.chat.id, States.CREATE_TASK_NAME)
             bot.send_message(message.chat.id,'Введіть назву завдання', reply_markup=create_cancel_menu())
         case States.CREATE_TASK_NAME:
             if message.text == "Назад":
                 execute_cancel_menu(message)
                 return
+            task_under_construction.name = message.text
             set_state(message.chat.id, States.CREATE_TASK_DESCRIPTION)
             bot.send_message(message.chat.id,'Введіть опис завдання', reply_markup=create_cancel_menu())
         case States.CREATE_TASK_DESCRIPTION:
             if message.text == "Назад":
                 execute_cancel_menu(message)
                 return
+
+            task_under_construction.description = message.text
+
             set_state(message.chat.id, States.CREATE_TASK_OPTIONALS)
             bot.send_message(message.chat.id,'Заповніть опціональні поля та підтвердіть створення завдання', reply_markup=create_edit_task_menu())
         case States.CREATE_TASK_OPTIONALS:
             if message.text == "Назад":
                 execute_cancel_menu(message)
                 return
+
+            if message.text == "Створити":
+                execute_create_task(task_under_construction, message)
+                return
+
             set_state(message.chat.id, States.CREATE_TASK_OPTIONALS)
             bot.send_message(message.chat.id,'Заповніть опціональні поля та підтвердіть створення завдання', reply_markup=create_edit_task_menu())
 
