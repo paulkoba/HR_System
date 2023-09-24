@@ -82,8 +82,11 @@ def make_main_menu():
     return markup
 
 def main_menu_handler(message):
+    global current_menu
+
     current_menu = "main_menu"
     if message.text == 'Створити таску':
+        create_task(message)
         bot.send_message(message.chat.id,'Иди работай')
     elif message.text == 'Переглянути таски':
         show_tasks_as_buttons(message)
@@ -107,16 +110,65 @@ def show_task_by_id(call):
     markup = telebot.types.InlineKeyboardMarkup()
     description, response = query_db(connection, "SELECT * FROM tasks WHERE TaskID = %s", (call.data,))
     formatted = "<b>{}</b> - {}\n\n{}\n\n<i>{} - {}</i>\n\n<b>{}</b>\n\n<i>{}</i>\n\n".format(escape_string(response[0][1]), response[0][0], escape_string(response[0][2]), response[0][4], response[0][5], response[0][6], escape_string(response[0][3]))
-    print(formatted)
     bot.send_message(call.from_user.id, formatted, parse_mode='HTML')
     
 def text_message_handler(message):
+    global current_menu
+
     if message.chat.type == 'private':
         match current_menu:
             case "main_menu":
                 main_menu_handler(message)
+            case "create_task_name":
+                create_task(message)
+            case "create_task_description":
+                create_task(message)
+            case "create_task_optionals":
+                create_task(message)
             case _:
                 print("Invalid state {}".format(current_menu))
+
+
+def create_cancel_menu():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item1=types.KeyboardButton("Назад")
+    markup.add(item1)
+    return markup
+
+def create_edit_task_menu():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+
+    item1=types.KeyboardButton("Назва завдання")
+    item2=types.KeyboardButton("Опис завдання")
+    item3=types.KeyboardButton("Ролі виконавців")
+    item4=types.KeyboardButton("Додати виконавців")
+    item5=types.KeyboardButton("Дедлайн")
+    item6=types.KeyboardButton("Прикріплення")
+    item7=types.KeyboardButton("Estimate")
+    item8=types.KeyboardButton("Назад")
+    item9=types.KeyboardButton("Створити")
+
+    markup.add(item1, item2)
+    markup.add(item3, item4)
+    markup.add(item5, item6, item7)
+    markup.add(item8, item9)
+
+    return markup
+
+def create_task(message):
+    global current_menu
+
+    match current_menu:
+        case "main_menu":
+            current_menu = "create_task_name"
+            bot.send_message(message.chat.id,'Введіть назву завдання', reply_markup=create_cancel_menu())
+        case "create_task_name":
+            current_menu = "create_task_description"
+            bot.send_message(message.chat.id,'Введіть опис завдання', reply_markup=create_cancel_menu())
+        case "create_task_description":
+            current_menu = "create_task_optionals"
+            bot.send_message(message.chat.id,'Заповніть опціональні поля та підтвердіть створення завдання', reply_markup=create_edit_task_menu())
+
     
 
 @bot.message_handler(commands=['start', 'help'])
@@ -127,10 +179,13 @@ def send_welcome(message):
 
 @bot.message_handler(func=lambda message: True)
 def reply_to_message(message):
+    print("Reply to message: {}".format(message.text))
     text_message_handler(message)
 
-@bot.callback_query_handler(func=lambda call: True)    
+@bot.callback_query_handler(func=lambda call: True)
 def query_handler(call):
+    print("Callback query handler: {}".format(call.data))
+
     match call.message.text:
         case "Оберіть завдання":
             show_task_by_id(call)
