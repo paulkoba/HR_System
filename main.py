@@ -1,4 +1,5 @@
 import telebot
+import datetime
 from database import query_db
 from telebot import types
 from prettytable import PrettyTable, from_db_cursor
@@ -163,7 +164,8 @@ def create_edit_task_menu():
     return markup
 
 def execute_create_task(task, message):
-    _, response = query_db("INSERT INTO spf_management.tasks (TaskName, TaskDescription, AuthorID, CreationDate, DueDate, Estimate, Attachment) VALUES (%s, %s, %s, %s, %s, %s, %s)", (task.name, task.description, task.author, task.creation_date, task.due_date, task.estimate, ' '.join(task.attachments)))
+    task.creation_date = datetime.datetime.now()
+    query_db("INSERT INTO spf_management.tasks (TaskName, TaskDescription, AuthorID, CreationDate, DueDate, Estimate, Attachment) VALUES (%s, %s, %s, %s, %s, %s, %s)", (task.name, task.description, task.author, task.creation_date, task.due_date, task.estimate, ' '.join(task.attachments)))
     pass
 
 def create_task(current_menu, message):
@@ -197,6 +199,8 @@ def create_task(current_menu, message):
 
             if message.text == "Створити":
                 execute_create_task(task_under_construction, message)
+                set_state(message.chat.id, States.MAIN_MENU)
+                render_main_menu(message)
                 return
 
             set_state(message.chat.id, States.CREATE_TASK_OPTIONALS)
