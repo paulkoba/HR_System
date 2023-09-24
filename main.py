@@ -53,6 +53,7 @@ def get_state_by_chat_id(chat_id):
     return response[0][0]
 
 def set_state_given_chat_id(chat_id, state):
+    print("Setting state to {}".format(state))
     _, response = query_db(connection, "SELECT * FROM _states WHERE ChatID = %s", (chat_id,))
 
     if response:
@@ -100,8 +101,7 @@ def make_main_menu():
 def main_menu_handler(message):
     set_state_given_chat_id(message.chat.id, "main_menu")
     if message.text == 'Створити таску':
-        create_task(message)
-        bot.send_message(message.chat.id,'Иди работай')
+        create_task(get_state_by_chat_id(message.chat.id), message)
     elif message.text == 'Переглянути таски':
         show_tasks_as_buttons(message)
     elif message.text == 'Список членів СПФ':
@@ -109,7 +109,11 @@ def main_menu_handler(message):
     elif message.text == 'Звіт про помилку':
         bot.send_message(message.chat.id,'Ничё не работает')
     else:
-        bot.send_message(message.chat.id,'Не зрозумів')
+        print("Received message \"{}\" in main_menu_handler".format(message.text))
+
+def render_main_menu(message):
+    markup=make_main_menu()
+    bot.send_message(message.chat.id,'Оберіть дію', reply_markup=markup)
 
 def show_tasks_as_buttons(message):
     markup = telebot.types.InlineKeyboardMarkup()
@@ -134,14 +138,17 @@ def text_message_handler(message):
             case "main_menu":
                 main_menu_handler(message)
             case "create_task_name":
-                create_task(message)
+                create_task(current_menu, message)
             case "create_task_description":
-                create_task(message)
+                create_task(current_menu, message)
             case "create_task_optionals":
-                create_task(message)
+                create_task(current_menu, message)
             case _:
                 print("Invalid state {}".format(current_menu))
 
+def execute_cancel_menu(message):
+    set_state_given_chat_id(message.chat.id, "main_menu")
+    render_main_menu(message)
 
 def create_cancel_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -169,17 +176,27 @@ def create_edit_task_menu():
 
     return markup
 
-def create_task(message):
-    current_menu = get_state_by_chat_id(message.chat.id)
-
+def create_task(current_menu, message):
     match current_menu:
         case "main_menu":
             set_state_given_chat_id(message.chat.id, "create_task_name")
             bot.send_message(message.chat.id,'Введіть назву завдання', reply_markup=create_cancel_menu())
         case "create_task_name":
+            if message.text == "Назад":
+                execute_cancel_menu(message)
+                return
             set_state_given_chat_id(message.chat.id, "create_task_description")
             bot.send_message(message.chat.id,'Введіть опис завдання', reply_markup=create_cancel_menu())
         case "create_task_description":
+            if message.text == "Назад":
+                execute_cancel_menu(message)
+                return
+            set_state_given_chat_id(message.chat.id, "create_task_optionals")
+            bot.send_message(message.chat.id,'Заповніть опціональні поля та підтвердіть створення завдання', reply_markup=create_edit_task_menu())
+        case "create_task_optionals":
+            if message.text == "Назад":
+                execute_cancel_menu(message)
+                return
             set_state_given_chat_id(message.chat.id, "create_task_optionals")
             bot.send_message(message.chat.id,'Заповніть опціональні поля та підтвердіть створення завдання', reply_markup=create_edit_task_menu())
 
@@ -187,8 +204,9 @@ def create_task(message):
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    markup=make_main_menu()
-    bot.send_message(message.chat.id,'Оберіть дію', reply_markup=markup)
+    set_state_given_chat_id(message.chat.id, "main_menu")
+
+    render_main_menu(message)
   
 
 @bot.message_handler(func=lambda message: True)
