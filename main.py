@@ -1,7 +1,6 @@
 import telebot
+from database import query_db
 from telebot import types
-import mysql.connector 
-from mysql.connector import Error
 from prettytable import PrettyTable, from_db_cursor
 from enum import Enum
 
@@ -26,60 +25,26 @@ class States(Enum):
     CREATE_TASK_DESCRIPTION = 3
     CREATE_TASK_OPTIONALS = 4
 
-def create_connection(host_name, user_name, user_password, db_name):
-    connection = None
-    try:
-        connection = mysql.connector.connect(
-            host=host_name,
-            user=user_name,
-            passwd=user_password,
-            database=db_name,
-            auth_plugin='mysql_native_password',
-            autocommit=True
-        )
-        print("Connection to MySQL DB '", db_name, "' successful")
-    except Error as e:
-        print(f"The error '{e}' occurred")
-
-    return connection
-
-def query_db(connection, query, parameters):
-    cursor = connection.cursor()
-
-    try:
-        if parameters is None:
-            cursor.execute(query)
-        else:
-            cursor.execute(query, parameters)
-
-        description = cursor.description
-        return description, cursor.fetchall()
-
-    except Error as e :
-        print(f"The error '{e}' occurred")
-
-connection = create_connection(IP, USERNAME, PASSWORD, "spf_management")
-
 bot = telebot.TeleBot(TOKEN)
 
 def get_state(chat_id):
-    _, response = query_db(connection, "SELECT State FROM _states WHERE ChatID = %s", (chat_id,))
+    _, response = query_db("SELECT State FROM _states WHERE ChatID = %s", (chat_id,))
 
     if len(response) == 0:
         set_state(chat_id, States.MAIN_MENU)
-        _, response = query_db(connection, "SELECT State FROM _states WHERE ChatID = %s", (chat_id,))
+        _, response = query_db("SELECT State FROM _states WHERE ChatID = %s", (chat_id,))
 
     print("Received state {}".format(response[0][0]))
     return States(response[0][0])
 
 def set_state(chat_id, state):
     print("Setting state to {}".format(state))
-    _, response = query_db(connection, "SELECT * FROM _states WHERE ChatID = %s", (chat_id,))
+    _, response = query_db("SELECT * FROM _states WHERE ChatID = %s", (chat_id,))
 
     if response:
-        query_db(connection, "UPDATE _states SET State = %s WHERE ChatID = %s", (state.value, chat_id))
+        query_db("UPDATE _states SET State = %s WHERE ChatID = %s", (state.value, chat_id))
     else:
-        query_db(connection, "INSERT INTO _states (ChatID, State) VALUES (%s, %s)", (chat_id, state.value));
+        query_db("INSERT INTO _states (ChatID, State) VALUES (%s, %s)", (chat_id, state.value));
 
 def escape_string(str):
     output = ""
@@ -104,8 +69,8 @@ def format_table_form_query_result(response, description, **kwargs):
         table.add_row(row)
     return str(table)
 
-def get_table_to_print(connection, query, parameters, **kwargs):
-    description, response = query_db(connection, query, parameters)
+def get_table_to_print(query, parameters, **kwargs):
+    description, response = query_db(query, parameters)
     return '`' + format_table_form_query_result(response, description, **kwargs) + '`'
 
 def make_main_menu():
@@ -125,7 +90,7 @@ def main_menu_handler(message):
     elif message.text == 'Переглянути таски':
         show_tasks_as_buttons(message)
     elif message.text == 'Список членів СПФ':
-        bot.send_message(message.chat.id, get_table_to_print(connection, "SELECT * FROM members", None), parse_mode='MarkdownV2')
+        bot.send_message(message.chat.id, get_table_to_print("SELECT * FROM members", None), parse_mode='MarkdownV2')
     elif message.text == 'Звіт про помилку':
         bot.send_message(message.chat.id,'Ничё не работает')
     else:
@@ -137,7 +102,7 @@ def render_main_menu(message):
 
 def show_tasks_as_buttons(message):
     markup = telebot.types.InlineKeyboardMarkup()
-    description, response = query_db(connection, "SELECT * FROM tasks", None)
+    description, response = query_db("SELECT * FROM tasks", None)
     i = 1
     for elem in response:
         markup.add(telebot.types.InlineKeyboardButton(text=elem[1], callback_data=elem[0]))
@@ -146,7 +111,7 @@ def show_tasks_as_buttons(message):
 
 def show_task_by_id(call):
     markup = telebot.types.InlineKeyboardMarkup()
-    description, response = query_db(connection, "SELECT * FROM tasks WHERE TaskID = %s", (call.data,))
+    description, response = query_db("SELECT * FROM tasks WHERE TaskID = %s", (call.data,))
     formatted = "<b>{}</b> - {}\n\n{}\n\n<i>{} - {}</i>\n\n<b>{}</b>\n\n<i>{}</i>\n\n".format(escape_string(response[0][1]), response[0][0], escape_string(response[0][2]), response[0][4], response[0][5], response[0][6], response[0][3])
     bot.send_message(call.from_user.id, formatted, parse_mode='HTML')
     
@@ -198,7 +163,7 @@ def create_edit_task_menu():
     return markup
 
 def execute_create_task(task, message):
-    _, response = query_db(connection, "INSERT INTO spf_management.tasks (TaskName, TaskDescription, AuthorID, CreationDate, DueDate, Estimate, Attachment) VALUES (%s, %s, %s, %s, %s, %s, %s)", (task.name, task.description, task.author, task.creation_date, task.due_date, task.estimate, ' '.join(task.attachments)))
+    _, response = query_db("INSERT INTO spf_management.tasks (TaskName, TaskDescription, AuthorID, CreationDate, DueDate, Estimate, Attachment) VALUES (%s, %s, %s, %s, %s, %s, %s)", (task.name, task.description, task.author, task.creation_date, task.due_date, task.estimate, ' '.join(task.attachments)))
     pass
 
 def create_task(current_menu, message):

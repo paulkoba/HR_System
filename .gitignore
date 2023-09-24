@@ -3,5 +3,6 @@ KEYS.py
 log.txt
 
 _pycache_
+__pycache__/
 
 .vscode
