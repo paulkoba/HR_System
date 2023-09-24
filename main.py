@@ -3,8 +3,16 @@ from telebot import types
 import mysql.connector 
 from mysql.connector import Error
 from prettytable import PrettyTable, from_db_cursor
+from enum import Enum
 
 from KEYS import *
+
+
+class States(Enum):
+    MAIN_MENU = 1
+    CREATE_TASK_NAME = 2
+    CREATE_TASK_DESCRIPTION = 3
+    CREATE_TASK_OPTIONALS = 4
 
 def create_connection(host_name, user_name, user_password, db_name):
     connection = None
@@ -42,24 +50,24 @@ connection = create_connection(IP, USERNAME, PASSWORD, "spf_management")
 
 bot = telebot.TeleBot(TOKEN)
 
-def get_state_by_chat_id(chat_id):
+def get_state(chat_id):
     _, response = query_db(connection, "SELECT State FROM _states WHERE ChatID = %s", (chat_id,))
 
     if len(response) == 0:
-        set_state_given_chat_id(chat_id, "main_menu")
+        set_state(chat_id, States.MAIN_MENU)
         _, response = query_db(connection, "SELECT State FROM _states WHERE ChatID = %s", (chat_id,))
 
     print("Received state {}".format(response[0][0]))
-    return response[0][0]
+    return States(response[0][0])
 
-def set_state_given_chat_id(chat_id, state):
+def set_state(chat_id, state):
     print("Setting state to {}".format(state))
     _, response = query_db(connection, "SELECT * FROM _states WHERE ChatID = %s", (chat_id,))
 
     if response:
-        query_db(connection, "UPDATE _states SET State = %s WHERE ChatID = %s", (state, chat_id))
+        query_db(connection, "UPDATE _states SET State = %s WHERE ChatID = %s", (state.value, chat_id))
     else:
-        query_db(connection, "INSERT INTO _states (ChatID, State) VALUES (%s, %s)", (chat_id, state));
+        query_db(connection, "INSERT INTO _states (ChatID, State) VALUES (%s, %s)", (chat_id, state.value));
 
 def escape_string(str):
     output = ""
@@ -99,9 +107,9 @@ def make_main_menu():
     return markup
 
 def main_menu_handler(message):
-    set_state_given_chat_id(message.chat.id, "main_menu")
+    set_state(message.chat.id, States.MAIN_MENU)
     if message.text == 'Створити таску':
-        create_task(get_state_by_chat_id(message.chat.id), message)
+        create_task(get_state(message.chat.id), message)
     elif message.text == 'Переглянути таски':
         show_tasks_as_buttons(message)
     elif message.text == 'Список членів СПФ':
@@ -131,23 +139,23 @@ def show_task_by_id(call):
     bot.send_message(call.from_user.id, formatted, parse_mode='HTML')
     
 def text_message_handler(message):
-    current_menu = get_state_by_chat_id(message.chat.id)
+    current_menu = get_state(message.chat.id)
 
     if message.chat.type == 'private':
         match current_menu:
-            case "main_menu":
+            case States.MAIN_MENU:
                 main_menu_handler(message)
-            case "create_task_name":
+            case States.CREATE_TASK_NAME:
                 create_task(current_menu, message)
-            case "create_task_description":
+            case States.CREATE_TASK_DESCRIPTION:
                 create_task(current_menu, message)
-            case "create_task_optionals":
+            case States.CREATE_TASK_OPTIONALS:
                 create_task(current_menu, message)
             case _:
                 print("Invalid state {}".format(current_menu))
 
 def execute_cancel_menu(message):
-    set_state_given_chat_id(message.chat.id, "main_menu")
+    set_state(message.chat.id, States.MAIN_MENU)
     render_main_menu(message)
 
 def create_cancel_menu():
@@ -178,33 +186,33 @@ def create_edit_task_menu():
 
 def create_task(current_menu, message):
     match current_menu:
-        case "main_menu":
-            set_state_given_chat_id(message.chat.id, "create_task_name")
+        case States.MAIN_MENU:
+            set_state(message.chat.id, States.CREATE_TASK_NAME)
             bot.send_message(message.chat.id,'Введіть назву завдання', reply_markup=create_cancel_menu())
-        case "create_task_name":
+        case States.CREATE_TASK_NAME:
             if message.text == "Назад":
                 execute_cancel_menu(message)
                 return
-            set_state_given_chat_id(message.chat.id, "create_task_description")
+            set_state(message.chat.id, States.CREATE_TASK_DESCRIPTION)
             bot.send_message(message.chat.id,'Введіть опис завдання', reply_markup=create_cancel_menu())
-        case "create_task_description":
+        case States.CREATE_TASK_DESCRIPTION:
             if message.text == "Назад":
                 execute_cancel_menu(message)
                 return
-            set_state_given_chat_id(message.chat.id, "create_task_optionals")
+            set_state(message.chat.id, States.CREATE_TASK_OPTIONALS)
             bot.send_message(message.chat.id,'Заповніть опціональні поля та підтвердіть створення завдання', reply_markup=create_edit_task_menu())
-        case "create_task_optionals":
+        case States.CREATE_TASK_OPTIONALS:
             if message.text == "Назад":
                 execute_cancel_menu(message)
                 return
-            set_state_given_chat_id(message.chat.id, "create_task_optionals")
+            set_state(message.chat.id, States.CREATE_TASK_OPTIONALS)
             bot.send_message(message.chat.id,'Заповніть опціональні поля та підтвердіть створення завдання', reply_markup=create_edit_task_menu())
 
     
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    set_state_given_chat_id(message.chat.id, "main_menu")
+    set_state(message.chat.id, States.MAIN_MENU)
 
     render_main_menu(message)
   
