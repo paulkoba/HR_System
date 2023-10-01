@@ -21,6 +21,8 @@ class Task:
 task_under_construction = Task()
 task_under_construction_swap_buffer = Task()
 
+role_id_to_role_name_cache = dict()
+
 class States(Enum):
     MAIN_MENU = 1
     CREATE_TASK_NAME = 2
@@ -118,23 +120,39 @@ def show_tasks_as_buttons(message):
     bot.send_message(message.chat.id, text="Оберіть завдання", reply_markup=markup)
 
 def show_roles_as_buttons(message):
+    global role_id_to_role_name_cache
+
     markup = telebot.types.InlineKeyboardMarkup()
     description, response = query_db("SELECT * FROM roles", None)
     i = 1
+    role_id_to_role_name_cache = dict()
     for elem in response:
         markup.add(telebot.types.InlineKeyboardButton(text=elem[1], callback_data=elem[0]))
+        role_id_to_role_name_cache[elem[0]] = elem[1]
         i+=1
-    bot.send_message(message.chat.id, text="Оберіть ролі", reply_markup=markup)     
+    bot.send_message(message.chat.id, text="👇", reply_markup=markup)
 
 def show_task_by_id(call):
     markup = telebot.types.InlineKeyboardMarkup()
     description, response = query_db("SELECT * FROM tasks WHERE TaskID = %s", (call.data,))
-    formatted = "<b>{}</b> - {}\n\n{}\n\n<i>{} - {}</i>\n\n<b>{}</b>\n\n<i>{}</i>\n\n".format(escape_string(response[0][1]), response[0][0], escape_string(response[0][2]), response[0][4], response[0][5], response[0][6], response[0][3])
+    formatted = "№{}\n<b>{}</b>\n\n{}\n\nСтворено: <i>{}</i>\nДедлайн: <i>{}</i>\n\nВартість: <b>{}</b>\n\nАвтор: <i>{}</i>\n\n".format(response[0][0], escape_string(response[0][1]), escape_string(response[0][2]), response[0][4], response[0][5], response[0][6], response[0][3])
     bot.send_message(call.from_user.id, formatted, parse_mode='HTML')
+
+def preview_task(task, message):
+    markup = telebot.types.InlineKeyboardMarkup()
+    formatted = "<b>{}</b>\n\n{}\n\nСтворено: <i>{}</i>\nДедлайн: <i>{}</i>\n\nВартість: <b>{}</b>\n\nАвтор: <i>{}</i>\n\n".format(task.name, task.name, task.description, task.creation_date, task.due_date, task.estimate, task.author)
+    bot.send_message(message.chat.id, formatted, parse_mode='HTML')
     
 def add_role_to_task(call):
+    try:
+        if int(call.data) not in task_under_construction_swap_buffer.roles:
+            bot.send_message(call.from_user.id, text="Додано роль: {}".format(role_id_to_role_name_cache[int(call.data)]))
+        else:
+            bot.send_message(call.from_user.id, text="Дана роль вже прикріплена до завдання.")
+    except:
+        print("Couln't find role name matching role ID {}".format(call.data))
+
     task_under_construction_swap_buffer.roles.append(int(call.data))
-    bot.send_message(call.from_user.id, text="Додано роль: {}".format(call.data))
 
 def text_message_handler(message):
     current_menu = get_state(message.chat.id)
@@ -274,27 +292,31 @@ def create_task(current_menu, message):
             # TODO: Fix hardcoded message contents
             if message.text == "Назва завдання":
                 set_state(message.chat.id, States.CREATE_TASK_CHANGE_NAME)
-                bot.send_message(message.chat.id,'Введіть назву завдання', reply_markup=create_cancel_menu())
+                bot.send_message(message.chat.id, 'Введіть назву завдання', reply_markup=create_cancel_menu())
                 return
 
             if message.text == "Опис завдання":
                 set_state(message.chat.id, States.CREATE_TASK_CHANGE_DESCRIPTION)
-                bot.send_message(message.chat.id,'Введіть опис завдання', reply_markup=create_cancel_menu())
+                bot.send_message(message.chat.id, 'Введіть опис завдання', reply_markup=create_cancel_menu())
                 return
 
             if message.text == "Estimate":
                 set_state(message.chat.id, States.CREATE_TASK_CHANGE_ESTIMATE)
-                bot.send_message(message.chat.id,'Введіть estimate:', reply_markup=create_cancel_menu())
+                bot.send_message(message.chat.id, 'Введіть estimate:', reply_markup=create_cancel_menu())
                 return
 
             if message.text == "Ролі виконавців":
                 set_state(message.chat.id, States.CREATE_TASK_CHANGE_ROLES)
-                bot.send_message(message.chat.id,'Оберіть ролі виконавців', reply_markup=create_cancel_approve_menu())
+                bot.send_message(message.chat.id, 'Оберіть ролі виконавців', reply_markup=create_cancel_approve_menu())
                 show_roles_as_buttons(message)
                 return
 
             if message.text == "Назад":
                 execute_cancel_menu(message)
+                return
+
+            if message.text == "Preview":
+                preview_task(task_under_construction, message)
                 return
 
             if message.text == "Створити":
@@ -325,7 +347,7 @@ def query_handler(call):
     match call.message.text:
         case "Оберіть завдання":
             show_task_by_id(call)
-        case "Оберіть ролі":
+        case "👇": # TODO: ???
             add_role_to_task(call)
 
 bot.infinity_polling()
