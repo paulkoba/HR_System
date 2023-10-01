@@ -25,6 +25,12 @@ class States(Enum):
     CREATE_TASK_NAME = 2
     CREATE_TASK_DESCRIPTION = 3
     CREATE_TASK_OPTIONALS = 4
+    CREATE_TASK_CHANGE_NAME = 5
+    CREATE_TASK_CHANGE_DESCRIPTION = 6
+    CREATE_TASK_CHANGE_ROLES = 7
+    CREATE_TASK_CHANGE_ASSIGNEES = 8
+    CREATE_TASK_CHANGE_ESTIMATE = 9
+    CREATE_TASK_CHANGE_ATTACHMENT = 10
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -129,6 +135,18 @@ def text_message_handler(message):
                 create_task(current_menu, message)
             case States.CREATE_TASK_OPTIONALS:
                 create_task(current_menu, message)
+            case States.CREATE_TASK_CHANGE_NAME:
+                create_task(current_menu, message)
+            case States.CREATE_TASK_CHANGE_DESCRIPTION:
+                create_task(current_menu, message)
+            case States.CREATE_TASK_CHANGE_ROLES:
+                create_task(current_menu, message)
+            case States.CREATE_TASK_CHANGE_ASSIGNEES:
+                create_task(current_menu, message)
+            case States.CREATE_TASK_CHANGE_ESTIMATE:
+                create_task(current_menu, message)
+            case States.CREATE_TASK_CHANGE_ATTACHMENT:
+                create_task(current_menu, message)                                                                                         
             case _:
                 print("Invalid state {}".format(current_menu))
 
@@ -166,7 +184,10 @@ def create_edit_task_menu():
 def execute_create_task(task, message):
     task.creation_date = datetime.datetime.now()
     query_db("INSERT INTO spf_management.tasks (TaskName, TaskDescription, AuthorID, CreationDate, DueDate, Estimate, Attachment) VALUES (%s, %s, %s, %s, %s, %s, %s)", (task.name, task.description, task.author, task.creation_date, task.due_date, task.estimate, ' '.join(task.attachments)))
-    pass
+
+def render_optionals_menu(message):
+    set_state(message.chat.id, States.CREATE_TASK_OPTIONALS)
+    bot.send_message(message.chat.id,'Заповніть опціональні поля та підтвердіть створення завдання', reply_markup=create_edit_task_menu())
 
 def create_task(current_menu, message):
     global task_under_construction
@@ -192,7 +213,61 @@ def create_task(current_menu, message):
 
             set_state(message.chat.id, States.CREATE_TASK_OPTIONALS)
             bot.send_message(message.chat.id,'Заповніть опціональні поля та підтвердіть створення завдання', reply_markup=create_edit_task_menu())
+        case States.CREATE_TASK_CHANGE_NAME:
+            if message.text == "Назад":
+                render_optionals_menu(message)
+                return
+            task_under_construction.name = message.text
+            render_optionals_menu(message)
+        
+        case States.CREATE_TASK_CHANGE_DESCRIPTION:
+            if message.text == "Назад":
+                render_optionals_menu(message)
+                return
+            task_under_construction.description = message.text
+            render_optionals_menu(message)
+
+        case States.CREATE_TASK_CHANGE_ESTIMATE:
+            if message.text == "Назад":
+                render_optionals_menu(message)
+                return
+            task_under_construction.estimate = message.text
+            render_optionals_menu(message)
+
+        case States.CREATE_TASK_CHANGE_ROLES:
+            if message.text == "Назад":
+                render_optionals_menu(message)
+                return
+
+            if message.text == "OK":
+                render_optionals_menu(message)
+                return
+
+            task_under_construction.roles = message.text
+            render_optionals_menu(message)
+
         case States.CREATE_TASK_OPTIONALS:
+            # TODO: Fix hardcoded message contents
+            if message.text == "Назва завдання":
+                set_state(message.chat.id, States.CREATE_TASK_CHANGE_NAME)
+                bot.send_message(message.chat.id,'Введіть назву завдання', reply_markup=create_cancel_menu())
+                return
+
+            if message.text == "Опис завдання":
+                set_state(message.chat.id, States.CREATE_TASK_CHANGE_DESCRIPTION)
+                bot.send_message(message.chat.id,'Введіть опис завдання', reply_markup=create_cancel_menu())
+                return
+
+            if message.text == "Estimate":
+                set_state(message.chat.id, States.CREATE_TASK_CHANGE_ESTIMATE)
+                bot.send_message(message.chat.id,'Введіть estimate:', reply_markup=create_cancel_menu())
+                return
+
+            if message.text == "Ролі виконавців":
+                set_state(message.chat.id, States.CREATE_TASK_CHANGE_ROLES)
+                bot.send_message(message.chat.id,'Введіть ролі виконавців', reply_markup=create_cancel_menu())
+                return
+
             if message.text == "Назад":
                 execute_cancel_menu(message)
                 return
@@ -203,9 +278,7 @@ def create_task(current_menu, message):
                 render_main_menu(message)
                 return
 
-            set_state(message.chat.id, States.CREATE_TASK_OPTIONALS)
-            bot.send_message(message.chat.id,'Заповніть опціональні поля та підтвердіть створення завдання', reply_markup=create_edit_task_menu())
-
+            render_optionals_menu(message)
     
 
 @bot.message_handler(commands=['start', 'help'])
