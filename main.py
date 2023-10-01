@@ -2,7 +2,7 @@ import telebot
 import datetime
 from database import query_db
 from telebot import types
-from prettytable import PrettyTable, from_db_cursor
+from prettytable import PrettyTable
 from enum import Enum
 
 from KEYS import *
@@ -19,6 +19,7 @@ class Task:
     author = 0
 
 task_under_construction = Task()
+task_under_construction_swap_buffer = Task()
 
 class States(Enum):
     MAIN_MENU = 1
@@ -116,12 +117,25 @@ def show_tasks_as_buttons(message):
         i+=1
     bot.send_message(message.chat.id, text="Оберіть завдання", reply_markup=markup)
 
+def show_roles_as_buttons(message):
+    markup = telebot.types.InlineKeyboardMarkup()
+    description, response = query_db("SELECT * FROM roles", None)
+    i = 1
+    for elem in response:
+        markup.add(telebot.types.InlineKeyboardButton(text=elem[1], callback_data=elem[0]))
+        i+=1
+    bot.send_message(message.chat.id, text="Оберіть ролі", reply_markup=markup)     
+
 def show_task_by_id(call):
     markup = telebot.types.InlineKeyboardMarkup()
     description, response = query_db("SELECT * FROM tasks WHERE TaskID = %s", (call.data,))
     formatted = "<b>{}</b> - {}\n\n{}\n\n<i>{} - {}</i>\n\n<b>{}</b>\n\n<i>{}</i>\n\n".format(escape_string(response[0][1]), response[0][0], escape_string(response[0][2]), response[0][4], response[0][5], response[0][6], response[0][3])
     bot.send_message(call.from_user.id, formatted, parse_mode='HTML')
     
+def add_role_to_task(call):
+    task_under_construction_swap_buffer.roles.append(int(call.data))
+    bot.send_message(call.from_user.id, text="Додано роль: {}".format(call.data))
+
 def text_message_handler(message):
     current_menu = get_state(message.chat.id)
 
@@ -160,6 +174,13 @@ def create_cancel_menu():
     markup.add(item1)
     return markup
 
+def create_cancel_approve_menu():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item1=types.KeyboardButton("Назад")
+    item2=types.KeyboardButton("OK")
+    markup.add(item1, item2)
+    return markup
+
 def create_edit_task_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
 
@@ -191,10 +212,12 @@ def render_optionals_menu(message):
 
 def create_task(current_menu, message):
     global task_under_construction
+    global task_under_construction_swap_buffer
 
     match current_menu:
         case States.MAIN_MENU:
             task_under_construction = Task()
+            task_under_construction_swap_buffer = Task()
             set_state(message.chat.id, States.CREATE_TASK_NAME)
             bot.send_message(message.chat.id,'Введіть назву завдання', reply_markup=create_cancel_menu())
         case States.CREATE_TASK_NAME:
@@ -240,10 +263,11 @@ def create_task(current_menu, message):
                 return
 
             if message.text == "OK":
+                task_under_construction.roles = task_under_construction_swap_buffer.roles
+                task_under_construction_swap_buffer.roles = []
                 render_optionals_menu(message)
                 return
 
-            task_under_construction.roles = message.text
             render_optionals_menu(message)
 
         case States.CREATE_TASK_OPTIONALS:
@@ -265,7 +289,8 @@ def create_task(current_menu, message):
 
             if message.text == "Ролі виконавців":
                 set_state(message.chat.id, States.CREATE_TASK_CHANGE_ROLES)
-                bot.send_message(message.chat.id,'Введіть ролі виконавців', reply_markup=create_cancel_menu())
+                bot.send_message(message.chat.id,'Оберіть ролі виконавців', reply_markup=create_cancel_approve_menu())
+                show_roles_as_buttons(message)
                 return
 
             if message.text == "Назад":
@@ -300,6 +325,7 @@ def query_handler(call):
     match call.message.text:
         case "Оберіть завдання":
             show_task_by_id(call)
-
+        case "Оберіть ролі":
+            add_role_to_task(call)
 
 bot.infinity_polling()
