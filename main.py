@@ -137,11 +137,21 @@ def show_task_by_id(call):
     description, response = query_db("SELECT * FROM tasks WHERE TaskID = %s", (call.data,))
     formatted = "№{}\n<b>{}</b>\n\n{}\n\nСтворено: <i>{}</i>\nДедлайн: <i>{}</i>\n\nВартість: <b>{}</b>\n\nАвтор: <i>{}</i>\n\n".format(response[0][0], escape_string(response[0][1]), escape_string(response[0][2]), response[0][4], response[0][5], response[0][6], response[0][3])
     bot.send_message(call.from_user.id, formatted, parse_mode='HTML')
+    
+    values = response[0][7].split(' ')
+    index = 0
+    while index < len(values) - 1:
+        bot.forward_message(call.from_user.id, values[index], values[index + 1])
+        index += 2
 
 def preview_task(task, message):
     markup = telebot.types.InlineKeyboardMarkup()
     formatted = "<b>{}</b>\n\n{}\n\nСтворено: <i>{}</i>\nДедлайн: <i>{}</i>\n\nВартість: <b>{}</b>\n\nАвтор: <i>{}</i>\n\n".format(task.name, task.name, task.description, task.creation_date, task.due_date, task.estimate, task.author)
     bot.send_message(message.chat.id, formatted, parse_mode='HTML')
+    
+    for el in task.attachments:
+        bot.forward_message(message.chat.id, el[0], el[1])
+    
     
 def add_role_to_task(call):
     try:
@@ -222,7 +232,7 @@ def create_edit_task_menu():
 
 def execute_create_task(task, message):
     task.creation_date = datetime.datetime.now()
-    query_db("INSERT INTO spf_management.tasks (TaskName, TaskDescription, AuthorID, CreationDate, DueDate, Estimate, Attachment) VALUES (%s, %s, %s, %s, %s, %s, %s)", (task.name, task.description, task.author, task.creation_date, task.due_date, task.estimate, ' '.join(task.attachments)))
+    query_db("INSERT INTO spf_management.tasks (TaskName, TaskDescription, AuthorID, CreationDate, DueDate, Estimate, Attachment) VALUES (%s, %s, %s, %s, %s, %s, %s)", (task.name, task.description, task.author, task.creation_date, task.due_date, task.estimate, ' '.join([attachment[0] + " " + attachment[1] for attachment in task.attachments])))
 
 def render_optionals_menu(message):
     set_state(message.chat.id, States.CREATE_TASK_OPTIONALS)
@@ -288,6 +298,20 @@ def create_task(current_menu, message):
 
             render_optionals_menu(message)
 
+        case States.CREATE_TASK_CHANGE_ATTACHMENT:
+            if message.text == "Назад":
+                render_optionals_menu(message)
+                return
+
+            if message.text == "OK":
+                task_under_construction.attachments = task_under_construction_swap_buffer.attachments
+                task_under_construction_swap_buffer.attachments = []
+                render_optionals_menu(message)
+                return
+
+            task_under_construction_swap_buffer.attachments.append([str(message.chat.id), str(message.message_id)])
+            render_optionals_menu(message)
+
         case States.CREATE_TASK_OPTIONALS:
             # TODO: Fix hardcoded message contents
             if message.text == "Назва завдання":
@@ -311,6 +335,11 @@ def create_task(current_menu, message):
                 show_roles_as_buttons(message)
                 return
 
+            if message.text == "Прикріплення":
+                set_state(message.chat.id, States.CREATE_TASK_CHANGE_ATTACHMENT)
+                bot.send_message(message.chat.id, 'Відправте прикріплення:', reply_markup=create_cancel_approve_menu())
+                return
+
             if message.text == "Назад":
                 execute_cancel_menu(message)
                 return
@@ -323,6 +352,9 @@ def create_task(current_menu, message):
                 execute_create_task(task_under_construction, message)
                 set_state(message.chat.id, States.MAIN_MENU)
                 render_main_menu(message)
+                task_under_construction_swap_buffer = Task()
+                task_under_construction = Task()
+                
                 return
 
             render_optionals_menu(message)
@@ -334,6 +366,13 @@ def send_welcome(message):
 
     render_main_menu(message)
   
+
+@bot.message_handler(content_types=['document', 'photo', 'audio', 'video', 'voice'])
+def document_handler(message):
+    print("Received document: {}".format(message))
+    state = get_state(message.chat.id)
+    if state == States.CREATE_TASK_CHANGE_ATTACHMENT:
+        task_under_construction_swap_buffer.attachments.append([str(message.chat.id), str(message.message_id)])
 
 @bot.message_handler(func=lambda message: True)
 def reply_to_message(message):
