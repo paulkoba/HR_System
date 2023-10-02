@@ -54,7 +54,7 @@ def set_state(chat_id, state):
     if response:
         query_db("UPDATE _states SET State = %s WHERE ChatID = %s", (state.value, chat_id))
     else:
-        query_db("INSERT INTO _states (ChatID, State) VALUES (%s, %s)", (chat_id, state.value));
+        query_db("INSERT INTO _states (ChatID, State) VALUES (%s, %s)", (chat_id, state.value))
 
 def escape_string(str):
     output = ""
@@ -310,7 +310,6 @@ def create_task(current_menu, message):
                 return
 
             task_under_construction_swap_buffer.attachments.append([str(message.chat.id), str(message.message_id)])
-            render_optionals_menu(message)
 
         case States.CREATE_TASK_OPTIONALS:
             # TODO: Fix hardcoded message contents
