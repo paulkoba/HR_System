@@ -1,4 +1,5 @@
 import mysql.connector 
+import threading
 from mysql.connector import Error
 from KEYS import *
 
@@ -19,9 +20,12 @@ def create_connection(host_name, user_name, user_password, db_name):
 
     return connection
 
+lock = threading.Lock()
 connection = create_connection(IP, USERNAME, PASSWORD, "spf_management")
 
 def query_db(query, parameters):
+    global lock
+    lock.acquire()
     cursor = connection.cursor()
 
     try:
@@ -31,7 +35,12 @@ def query_db(query, parameters):
             cursor.execute(query, parameters)
 
         description = cursor.description
-        return description, cursor.fetchall()
+        
+        a, b = description, cursor.fetchall()
+        lock.release()
+        return a, b
 
     except Error as e :
         print(f"The error '{e}' occurred")
+    
+    lock.release()
