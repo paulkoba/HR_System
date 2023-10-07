@@ -301,9 +301,15 @@ def create_task(current_menu, message):
                 render_optionals_menu(message)
                 return
             buffer = get_task_under_construction(message.chat.id)
-            buffer.estimate = message.text
-            set_task_under_construction(message.chat.id, buffer)
-            render_optionals_menu(message)
+
+            try:
+                float(message.text)
+                buffer.estimate = message.text
+                
+                set_task_under_construction(message.chat.id, buffer)
+                render_optionals_menu(message)
+            except ValueError:
+                bot.send_message(message.chat.id, "Будь-ласка введіть число.", reply_markup=create_cancel_menu())
 
         case States.CREATE_TASK_CHANGE_ROLES:
             if message.text == "Назад":
