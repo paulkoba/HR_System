@@ -26,7 +26,7 @@ def get_task_under_construction_swap_buffer(chat_id):
     task_under_construction[chat_id] = Task()
     return task_under_construction_swap_buffer[chat_id]
 
-def set_task_under_construction_buffer(chat_id, value):
+def set_task_under_construction_swap_buffer(chat_id, value):
     global task_under_construction_swap_buffer
 
     task_under_construction_swap_buffer[chat_id] = value

@@ -8,7 +8,7 @@ from KEYS import *
 
 from database import query_db
 from task import Task
-from local_task_store import get_task_under_construction, get_task_under_construction_swap_buffer, set_task_under_construction, set_task_under_construction_buffer
+from local_task_store import get_task_under_construction, get_task_under_construction_swap_buffer, set_task_under_construction, set_task_under_construction_swap_buffer
 
 role_id_to_role_name_cache = dict()
 
@@ -40,6 +40,7 @@ class States(Enum):
     CREATE_TASK_CHANGE_ASSIGNEES = 8
     CREATE_TASK_CHANGE_ESTIMATE = 9
     CREATE_TASK_CHANGE_ATTACHMENT = 10
+    CREATE_TASK_CHANGE_DUE_DATE = 11
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -172,7 +173,7 @@ def add_role_to_task(call):
     except:
         print("Couln't find role name matching role ID {}".format(call.data))
     buffer.roles.append(int(call.data))
-    set_task_under_construction_buffer(call.from_user.id, buffer)
+    set_task_under_construction_swap_buffer(call.from_user.id, buffer)
 
 def text_message_handler(message):
     current_menu = get_state(message.chat.id)
@@ -198,6 +199,8 @@ def text_message_handler(message):
             case States.CREATE_TASK_CHANGE_ESTIMATE:
                 create_task(current_menu, message)
             case States.CREATE_TASK_CHANGE_ATTACHMENT:
+                create_task(current_menu, message)
+            case States.CREATE_TASK_CHANGE_DUE_DATE:
                 create_task(current_menu, message)                                                                                         
             case _:
                 print("Invalid state {}".format(current_menu))
@@ -253,7 +256,7 @@ def create_task(current_menu, message):
     match current_menu:
         case States.MAIN_MENU:
             set_task_under_construction(message.chat.id, Task())
-            set_task_under_construction_buffer(message.chat.id, Task())
+            set_task_under_construction_swap_buffer(message.chat.id, Task())
 
             set_state(message.chat.id, States.CREATE_TASK_NAME)
             bot.send_message(message.chat.id,'Введіть назву завдання', reply_markup=create_cancel_menu())
@@ -303,13 +306,15 @@ def create_task(current_menu, message):
             buffer = get_task_under_construction(message.chat.id)
 
             try:
-                float(message.text)
-                buffer.estimate = message.text
-                
-                set_task_under_construction(message.chat.id, buffer)
-                render_optionals_menu(message)
+                if float(message.text) >= 0.0:
+                    buffer.estimate = message.text
+                    
+                    set_task_under_construction(message.chat.id, buffer)
+                    render_optionals_menu(message)
+                else:
+                    bot.send_message(message.chat.id, "Будь-ласка введіть число.", reply_markup=create_cancel_menu())
             except ValueError:
-                bot.send_message(message.chat.id, "Будь-ласка введіть число.", reply_markup=create_cancel_menu())
+                bot.send_message(message.chat.id, "Будь-ласка введіть додатнє число.", reply_markup=create_cancel_menu())
 
         case States.CREATE_TASK_CHANGE_ROLES:
             if message.text == "Назад":
@@ -321,13 +326,40 @@ def create_task(current_menu, message):
                 swap_buffer = get_task_under_construction_swap_buffer(message.chat.id)
                 buffer.roles = swap_buffer.roles
                 swap_buffer.roles = []
-                set_task_under_construction_buffer(message.chat.id, swap_buffer)
+                set_task_under_construction_swap_buffer(message.chat.id, swap_buffer)
                 set_task_under_construction(message.chat.id, buffer)
 
                 render_optionals_menu(message)
                 return
 
             render_optionals_menu(message)
+
+        
+        case States.CREATE_TASK_CHANGE_ASSIGNEES:
+            if message.text == "Назад":
+                render_optionals_menu(message)
+                return
+
+            if message.text == "OK":
+                buffer = get_task_under_construction(message.chat.id)
+                swap_buffer = get_task_under_construction_swap_buffer(message.chat.id)
+                buffer.assignees = swap_buffer.assignees
+                swap_buffer.assignees = []
+                set_task_under_construction_swap_buffer(message.chat.id, swap_buffer)
+                set_task_under_construction(message.chat.id, buffer)
+
+                render_optionals_menu(message)
+                return
+
+            buffer = get_task_under_construction_swap_buffer(message.chat.id)
+            if message.text.startswith('@'):
+                buffer.assignees.append(message.text[1:])
+                bot.send_message(message.chat.id, "Додано виконавця @{}".format(message.text[1:]), reply_markup=create_cancel_approve_menu())
+            else:
+                buffer.assignees.append(message.text)
+                bot.send_message(message.chat.id, "Додано виконавця @{}".format(message.text), reply_markup=create_cancel_approve_menu())
+        
+            set_task_under_construction_swap_buffer(message.chat.id, buffer)
 
         case States.CREATE_TASK_CHANGE_ATTACHMENT:
             if message.text == "Назад":
@@ -339,7 +371,7 @@ def create_task(current_menu, message):
                 swap_buffer = get_task_under_construction_swap_buffer(message.chat.id)
                 buffer.attachments = swap_buffer.attachments
                 swap_buffer.attachments = []
-                set_task_under_construction_buffer(message.chat.id, swap_buffer)
+                set_task_under_construction_swap_buffer(message.chat.id, swap_buffer)
                 set_task_under_construction(message.chat.id, buffer)
 
                 render_optionals_menu(message)
@@ -347,7 +379,22 @@ def create_task(current_menu, message):
 
             buffer = get_task_under_construction_swap_buffer(message.chat.id)
             buffer.attachments.append([str(message.chat.id), str(message.message_id)])
-            set_task_under_construction_buffer(message.chat.id, buffer)
+            set_task_under_construction_swap_buffer(message.chat.id, buffer)
+
+        case States.CREATE_TASK_CHANGE_DUE_DATE:
+            if message.text == "Назад":
+                render_optionals_menu(message)
+                return
+            buffer = get_task_under_construction(message.chat.id)
+
+            try:
+                datetime.datetime.strptime(message.text, '%Y-%m-%d %H:%M:%S')
+                buffer.due_date = message.text
+                
+                set_task_under_construction(message.chat.id, buffer)
+                render_optionals_menu(message)
+            except ValueError:
+                bot.send_message(message.chat.id, "Будь-ласка введіть дату у форматі 1970-01-01 00:00:00.", reply_markup=create_cancel_menu())
 
         case States.CREATE_TASK_OPTIONALS:
             # TODO: Fix hardcoded message contents
@@ -372,6 +419,16 @@ def create_task(current_menu, message):
                 show_roles_as_buttons(message)
                 return
 
+            if message.text == "Дедлайн":
+                set_state(message.chat.id, States.CREATE_TASK_CHANGE_DUE_DATE)
+                bot.send_message(message.chat.id, 'Введіть дедлайн у форматі 1970-01-01 00:00:00.', reply_markup=create_cancel_menu())
+                return
+
+            if message.text == "Додати виконавців":
+                set_state(message.chat.id, States.CREATE_TASK_CHANGE_ASSIGNEES)
+                bot.send_message(message.chat.id, 'Введіть нікнейми виконавців.', reply_markup=create_cancel_approve_menu())
+                return
+
             if message.text == "Прикріплення":
                 set_state(message.chat.id, States.CREATE_TASK_CHANGE_ATTACHMENT)
                 bot.send_message(message.chat.id, 'Відправте прикріплення:', reply_markup=create_cancel_approve_menu())
@@ -390,7 +447,7 @@ def create_task(current_menu, message):
                 set_state(message.chat.id, States.MAIN_MENU)
                 render_main_menu(message)
                 set_task_under_construction(message.chat.id, Task())
-                set_task_under_construction_buffer(message.chat.id, Task())
+                set_task_under_construction_swap_buffer(message.chat.id, Task())
                 
                 return
 
@@ -411,7 +468,7 @@ def document_handler(message):
     if state == States.CREATE_TASK_CHANGE_ATTACHMENT:
         swap_buffer = get_task_under_construction_swap_buffer(message.chat.id)
         swap_buffer.attachments.append([str(message.chat.id), str(message.message_id)])
-        set_task_under_construction_buffer(message.chat.id, swap_buffer)
+        set_task_under_construction_swap_buffer(message.chat.id, swap_buffer)
 
 @bot.message_handler(func=lambda message: True)
 def reply_to_message(message):
