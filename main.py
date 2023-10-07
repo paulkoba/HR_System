@@ -1,22 +1,14 @@
 import telebot
 import datetime
-from database import query_db
+
 from telebot import types
 from prettytable import PrettyTable
 from enum import Enum
-
 from KEYS import *
 
-class Task:
-    name = ""
-    description = ""
-    roles = []
-    assignees = []
-    due_date = "1970-01-01 00:00:00"
-    creation_date = "1970-01-01 00:00:00"
-    attachments = []
-    estimate = 0
-    author = 0
+from database import query_db
+from task import Task
+from local_task_store import get_task_under_construction, get_task_under_construction_swap_buffer, set_task_under_construction, set_task_under_construction_buffer
 
 task_under_construction = dict()
 task_under_construction_swap_buffer = dict()
@@ -36,36 +28,6 @@ class States(Enum):
     CREATE_TASK_CHANGE_ATTACHMENT = 10
 
 bot = telebot.TeleBot(TOKEN)
-
-def get_task_under_construction(chat_id):
-    global task_under_construction
-
-    if chat_id in task_under_construction:
-        return task_under_construction[chat_id]
-
-    task_under_construction[chat_id] = Task()
-    return task_under_construction[chat_id]
-
-def set_task_under_construction(chat_id, value):
-    global task_under_construction
-
-    task_under_construction[chat_id] = value
-
-def get_task_under_construction_swap_buffer(chat_id):
-    global task_under_construction_swap_buffer
-
-    if chat_id in task_under_construction_swap_buffer:
-        return task_under_construction_swap_buffer[chat_id]
-
-    task_under_construction[chat_id] = Task()
-    return task_under_construction_swap_buffer[chat_id]
-
-def set_task_under_construction_buffer(chat_id, value):
-    global task_under_construction_swap_buffer
-
-    task_under_construction_swap_buffer[chat_id] = value
-
-
 
 def get_state(chat_id):
     _, response = query_db("SELECT State FROM _states WHERE ChatID = %s", (chat_id,))
