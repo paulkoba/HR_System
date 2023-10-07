@@ -138,7 +138,7 @@ def show_task_by_id(call):
 
 def preview_task(task, message):
     markup = telebot.types.InlineKeyboardMarkup()
-    formatted = "<b>{}</b>\n\n{}\n\nСтворено: <i>{}</i>\nДедлайн: <i>{}</i>\n\nВартість: <b>{}</b>\n\nАвтор: <i>{}</i>\n\n".format(task.name, task.name, task.description, task.creation_date, task.due_date, task.estimate, task.author)
+    formatted = "<b>{}</b>\n\n{}\n\nСтворено: <i>{}</i>\nДедлайн: <i>{}</i>\n\nВартість: <b>{}</b>\n\nАвтор: <i>{}</i>\n\n".format(task.name, task.description, task.creation_date, task.due_date, task.estimate, task.author)
     bot.send_message(message.chat.id, formatted, parse_mode='HTML')
     
     for el in task.attachments:
