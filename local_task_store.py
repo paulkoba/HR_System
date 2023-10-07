@@ -1,5 +1,8 @@
 from task import Task
 
+task_under_construction = dict()
+task_under_construction_swap_buffer = dict()
+
 def get_task_under_construction(chat_id):
     global task_under_construction
 

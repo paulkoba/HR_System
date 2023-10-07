@@ -10,10 +10,24 @@ from database import query_db
 from task import Task
 from local_task_store import get_task_under_construction, get_task_under_construction_swap_buffer, set_task_under_construction, set_task_under_construction_buffer
 
-task_under_construction = dict()
-task_under_construction_swap_buffer = dict()
-
 role_id_to_role_name_cache = dict()
+
+def get_member_username_from_id(id):
+    _, response = query_db("SELECT * FROM users_id WHERE UserID = %s", (id,))
+
+    if len(response) == 0:
+        print("Couldn't retrieve username of user with ID: {}".format(id))
+        return str(id)
+
+    return '@' + response[0][1]
+
+def update_id_username_relation(message):
+    _, response = query_db("SELECT * FROM users_id WHERE UserID = %s", (message.from_user.id,))
+
+    if response:
+        query_db("UPDATE users_id SET Username = %s WHERE UserID = %s", (message.from_user.username, message.from_user.id))
+    else:
+        query_db("INSERT INTO users_id (UserID, Username) VALUES (%s, %s)", (message.from_user.id, message.from_user.username))
 
 class States(Enum):
     MAIN_MENU = 1
@@ -100,6 +114,9 @@ def main_menu_handler(message):
 
 def render_main_menu(message):
     markup=make_main_menu()
+
+    update_id_username_relation(message)
+
     bot.send_message(message.chat.id,'Оберіть дію', reply_markup=markup)
 
 def show_tasks_as_buttons(message):
@@ -127,7 +144,7 @@ def show_roles_as_buttons(message):
 def show_task_by_id(call):
     markup = telebot.types.InlineKeyboardMarkup()
     description, response = query_db("SELECT * FROM tasks WHERE TaskID = %s", (call.data,))
-    formatted = "№{}\n<b>{}</b>\n\n{}\n\nСтворено: <i>{}</i>\nДедлайн: <i>{}</i>\n\nВартість: <b>{}</b>\n\nАвтор: <i>{}</i>\n\n".format(response[0][0], escape_string(response[0][1]), escape_string(response[0][2]), response[0][4], response[0][5], response[0][6], response[0][3])
+    formatted = "№{}\n<b>{}</b>\n\n{}\n\nСтворено: <i>{}</i>\nДедлайн: <i>{}</i>\n\nВартість: <b>{}</b>\n\nАвтор: <i>{}</i>\n\n".format(response[0][0], escape_string(response[0][1]), escape_string(response[0][2]), response[0][4], response[0][5], response[0][6], get_member_username_from_id(response[0][3]))
     bot.send_message(call.from_user.id, formatted, parse_mode='HTML')
     
     values = response[0][7].split(' ')
@@ -138,7 +155,7 @@ def show_task_by_id(call):
 
 def preview_task(task, message):
     markup = telebot.types.InlineKeyboardMarkup()
-    formatted = "<b>{}</b>\n\n{}\n\nСтворено: <i>{}</i>\nДедлайн: <i>{}</i>\n\nВартість: <b>{}</b>\n\nАвтор: <i>{}</i>\n\n".format(task.name, task.description, task.creation_date, task.due_date, task.estimate, task.author)
+    formatted = "<b>{}</b>\n\n{}\n\nДедлайн: <i>{}</i>\n\nВартість: <b>{}</b>\n\nАвтор: <i>{}</i>\n\n".format(task.name, task.description, task.due_date, task.estimate, get_member_username_from_id(message.from_user.id))
     bot.send_message(message.chat.id, formatted, parse_mode='HTML')
     
     for el in task.attachments:
@@ -225,6 +242,7 @@ def create_edit_task_menu():
 
 def execute_create_task(task, message):
     task.creation_date = datetime.datetime.now()
+    task.author = message.from_user.id
     query_db("INSERT INTO spf_management.tasks (TaskName, TaskDescription, AuthorID, CreationDate, DueDate, Estimate, Attachment) VALUES (%s, %s, %s, %s, %s, %s, %s)", (task.name, task.description, task.author, task.creation_date, task.due_date, task.estimate, ' '.join([attachment[0] + " " + attachment[1] for attachment in task.attachments])))
 
 def render_optionals_menu(message):
