@@ -1,5 +1,6 @@
 import telebot
 import datetime
+import localization
 
 from telebot import types
 from prettytable import PrettyTable
@@ -92,24 +93,24 @@ def get_table_to_print(query, parameters, **kwargs):
 
 def make_main_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item1=types.KeyboardButton("Створити таску")
-    item2=types.KeyboardButton("Переглянути таски")
-    item3=types.KeyboardButton("Список членів СПФ")
-    item4=types.KeyboardButton("Звіт про помилку")
+    item1=types.KeyboardButton(localization.CreateTask)
+    item2=types.KeyboardButton(localization.ViewTasks)
+    item3=types.KeyboardButton(localization.ListOfMembersSPF)
+    item4=types.KeyboardButton(localization.ReportError)
     markup.add(item1, item2)
     markup.add(item3, item4)
     return markup
 
 def main_menu_handler(message):
     set_state(message.chat.id, States.MAIN_MENU)
-    if message.text == 'Створити таску':
+    if message.text == localization.CreateTask:
         create_task(get_state(message.chat.id), message)
-    elif message.text == 'Переглянути таски':
+    elif message.text == localization.ViewTasks:
         show_tasks_as_buttons(message)
-    elif message.text == 'Список членів СПФ':
+    elif message.text == localization.ListOfMembersSPF:
         bot.send_message(message.chat.id, get_table_to_print("SELECT * FROM members", None), parse_mode='MarkdownV2')
-    elif message.text == 'Звіт про помилку':
-        bot.send_message(message.chat.id,'Ничё не работает')
+    elif message.text == localization.ReportError:
+        bot.send_message(message.chat.id, localization.NothingWorks)
     else:
         print("Received message \"{}\" in main_menu_handler".format(message.text))
 
@@ -118,7 +119,7 @@ def render_main_menu(message):
 
     update_id_username_relation(message)
 
-    bot.send_message(message.chat.id,'Оберіть дію', reply_markup=markup)
+    bot.send_message(message.chat.id, localization.ChooseAction, reply_markup=markup)
 
 def show_tasks_as_buttons(message):
     markup = telebot.types.InlineKeyboardMarkup()
@@ -127,7 +128,7 @@ def show_tasks_as_buttons(message):
     for elem in response:
         markup.add(telebot.types.InlineKeyboardButton(text=elem[1], callback_data=elem[0]))
         i+=1
-    bot.send_message(message.chat.id, text="Оберіть завдання", reply_markup=markup)
+    bot.send_message(message.chat.id, text=localization.ChooseTask, reply_markup=markup)
 
 def show_roles_as_buttons(message):
     global role_id_to_role_name_cache
@@ -140,12 +141,12 @@ def show_roles_as_buttons(message):
         markup.add(telebot.types.InlineKeyboardButton(text=elem[1], callback_data=elem[0]))
         role_id_to_role_name_cache[elem[0]] = elem[1]
         i+=1
-    bot.send_message(message.chat.id, text="👇", reply_markup=markup)
+    bot.send_message(message.chat.id, text=localization.DownPointing, reply_markup=markup)
 
 def show_task_by_id(call):
     markup = telebot.types.InlineKeyboardMarkup()
     description, response = query_db("SELECT * FROM tasks WHERE TaskID = %s", (call.data,))
-    formatted = "№{}\n<b>{}</b>\n\n{}\n\nСтворено: <i>{}</i>\nДедлайн: <i>{}</i>\n\nВартість: <b>{}</b>\n\nАвтор: <i>{}</i>\n\n".format(response[0][0], escape_string(response[0][1]), escape_string(response[0][2]), response[0][4], response[0][5], response[0][6], get_member_username_from_id(response[0][3]))
+    formatted = ("№{}\n<b>{}</b>\n\n{}\n\n"+localization.Created+": <i>{}</i>\n"+localization.Deadline+": <i>{}</i>\n\n"+localization.Cost+": <b>{}</b>\n\n"+localization.Author+": <i>{}</i>\n\n").format(response[0][0], escape_string(response[0][1]), escape_string(response[0][2]), response[0][4], response[0][5], response[0][6], get_member_username_from_id(response[0][3]))
     bot.send_message(call.from_user.id, formatted, parse_mode='HTML')
     
     values = response[0][7].split(' ')
@@ -156,7 +157,7 @@ def show_task_by_id(call):
 
 def preview_task(task, message):
     markup = telebot.types.InlineKeyboardMarkup()
-    formatted = "<b>{}</b>\n\n{}\n\nДедлайн: <i>{}</i>\n\nВартість: <b>{}</b>\n\nАвтор: <i>{}</i>\n\n".format(task.name, task.description, task.due_date, task.estimate, get_member_username_from_id(message.from_user.id))
+    formatted = ("<b>{}</b>\n\n{}\n\n"+localization.Deadline+": <i>{}</i>\n\n"+localization.Cost+": <b>{}</b>\n\n"+localization.Author+": <i>{}</i>\n\n").format(task.name, task.description, task.due_date, task.estimate, get_member_username_from_id(message.from_user.id))
     bot.send_message(message.chat.id, formatted, parse_mode='HTML')
     
     for el in task.attachments:
@@ -167,9 +168,9 @@ def add_role_to_task(call):
     buffer = get_task_under_construction_swap_buffer(call.from_user.id)
     try:
         if int(call.data) not in buffer.roles:
-            bot.send_message(call.from_user.id, text="Додано роль: {}".format(role_id_to_role_name_cache[int(call.data)]))
+            bot.send_message(call.from_user.id, text=(localization.AddedRole+": {}").format(role_id_to_role_name_cache[int(call.data)]))
         else:
-            bot.send_message(call.from_user.id, text="Дана роль вже прикріплена до завдання.")
+            bot.send_message(call.from_user.id, text=localization.RoleIsAlreadyAttached)
     except:
         print("Couln't find role name matching role ID {}".format(call.data))
     buffer.roles.append(int(call.data))
@@ -211,30 +212,30 @@ def execute_cancel_menu(message):
 
 def create_cancel_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item1=types.KeyboardButton("Назад")
+    item1=types.KeyboardButton(localization.Back)
     markup.add(item1)
     return markup
 
 def create_cancel_approve_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item1=types.KeyboardButton("Назад")
-    item2=types.KeyboardButton("OK")
+    item1=types.KeyboardButton(localization.Back)
+    item2=types.KeyboardButton(localization.Ok)
     markup.add(item1, item2)
     return markup
 
 def create_edit_task_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
 
-    item1=types.KeyboardButton("Назва завдання")
-    item2=types.KeyboardButton("Опис завдання")
-    item3=types.KeyboardButton("Ролі виконавців")
-    item4=types.KeyboardButton("Додати виконавців")
-    item5=types.KeyboardButton("Дедлайн")
-    item6=types.KeyboardButton("Прикріплення")
-    item7=types.KeyboardButton("Estimate")
-    item8=types.KeyboardButton("Назад")
-    item9=types.KeyboardButton("Preview")
-    item10=types.KeyboardButton("Створити")
+    item1=types.KeyboardButton(localization.TaskName)
+    item2=types.KeyboardButton(localization.TaskDescription)
+    item3=types.KeyboardButton(localization.RolesPerformers)
+    item4=types.KeyboardButton(localization.AddPerformers)
+    item5=types.KeyboardButton(localization.Deadline)
+    item6=types.KeyboardButton(localization.Attachment)
+    item7=types.KeyboardButton(localization.Estimate)
+    item8=types.KeyboardButton(localization.Back)
+    item9=types.KeyboardButton(localization.Preview)
+    item10=types.KeyboardButton(localization.Create)
 
     markup.add(item1, item2)
     markup.add(item3, item4)
@@ -250,7 +251,7 @@ def execute_create_task(task, message):
 
 def render_optionals_menu(message):
     set_state(message.chat.id, States.CREATE_TASK_OPTIONALS)
-    bot.send_message(message.chat.id,'Заповніть опціональні поля та підтвердіть створення завдання', reply_markup=create_edit_task_menu())
+    bot.send_message(message.chat.id, localization.RenderOptionalsMenuMessage, reply_markup=create_edit_task_menu())
 
 def create_task(current_menu, message):
     match current_menu:
@@ -259,18 +260,18 @@ def create_task(current_menu, message):
             set_task_under_construction_swap_buffer(message.chat.id, Task())
 
             set_state(message.chat.id, States.CREATE_TASK_NAME)
-            bot.send_message(message.chat.id,'Введіть назву завдання', reply_markup=create_cancel_menu())
+            bot.send_message(message.chat.id, localization.EnterTaskName, reply_markup=create_cancel_menu())
         case States.CREATE_TASK_NAME:
-            if message.text == "Назад":
+            if message.text == localization.Back:
                 execute_cancel_menu(message)
                 return
             buffer = get_task_under_construction(message.chat.id)
             buffer.name = message.text
             set_task_under_construction(message.chat.id, buffer)
             set_state(message.chat.id, States.CREATE_TASK_DESCRIPTION)
-            bot.send_message(message.chat.id,'Введіть опис завдання', reply_markup=create_cancel_menu())
+            bot.send_message(message.chat.id, localization.EnterTaskDescription, reply_markup=create_cancel_menu())
         case States.CREATE_TASK_DESCRIPTION:
-            if message.text == "Назад":
+            if message.text == localization.Back:
                 execute_cancel_menu(message)
                 return
 
@@ -279,9 +280,9 @@ def create_task(current_menu, message):
             set_task_under_construction(message.chat.id, buffer)
 
             set_state(message.chat.id, States.CREATE_TASK_OPTIONALS)
-            bot.send_message(message.chat.id,'Заповніть опціональні поля та підтвердіть створення завдання', reply_markup=create_edit_task_menu())
+            bot.send_message(message.chat.id, localization.RenderOptionalsMenuMessage, reply_markup=create_edit_task_menu())
         case States.CREATE_TASK_CHANGE_NAME:
-            if message.text == "Назад":
+            if message.text == localization.Back:
                 render_optionals_menu(message)
                 return
 
@@ -291,7 +292,7 @@ def create_task(current_menu, message):
             render_optionals_menu(message)
         
         case States.CREATE_TASK_CHANGE_DESCRIPTION:
-            if message.text == "Назад":
+            if message.text == localization.Back:
                 render_optionals_menu(message)
                 return
             buffer = get_task_under_construction(message.chat.id)
@@ -300,7 +301,7 @@ def create_task(current_menu, message):
             render_optionals_menu(message)
 
         case States.CREATE_TASK_CHANGE_ESTIMATE:
-            if message.text == "Назад":
+            if message.text == localization.Back:
                 render_optionals_menu(message)
                 return
             buffer = get_task_under_construction(message.chat.id)
@@ -312,16 +313,16 @@ def create_task(current_menu, message):
                     set_task_under_construction(message.chat.id, buffer)
                     render_optionals_menu(message)
                 else:
-                    bot.send_message(message.chat.id, "Будь-ласка введіть число.", reply_markup=create_cancel_menu())
+                    bot.send_message(message.chat.id, localization.EnterNumber, reply_markup=create_cancel_menu())
             except ValueError:
-                bot.send_message(message.chat.id, "Будь-ласка введіть додатнє число.", reply_markup=create_cancel_menu())
+                bot.send_message(message.chat.id, localization.EnterPositiveNumber, reply_markup=create_cancel_menu())
 
         case States.CREATE_TASK_CHANGE_ROLES:
-            if message.text == "Назад":
+            if message.text == localization.Back:
                 render_optionals_menu(message)
                 return
 
-            if message.text == "OK":
+            if message.text == localization.Ok:
                 buffer = get_task_under_construction(message.chat.id)
                 swap_buffer = get_task_under_construction_swap_buffer(message.chat.id)
                 buffer.roles = swap_buffer.roles
@@ -336,11 +337,11 @@ def create_task(current_menu, message):
 
         
         case States.CREATE_TASK_CHANGE_ASSIGNEES:
-            if message.text == "Назад":
+            if message.text == localization.Back:
                 render_optionals_menu(message)
                 return
 
-            if message.text == "OK":
+            if message.text == localization.Ok:
                 buffer = get_task_under_construction(message.chat.id)
                 swap_buffer = get_task_under_construction_swap_buffer(message.chat.id)
                 buffer.assignees = swap_buffer.assignees
@@ -354,19 +355,19 @@ def create_task(current_menu, message):
             buffer = get_task_under_construction_swap_buffer(message.chat.id)
             if message.text.startswith('@'):
                 buffer.assignees.append(message.text[1:])
-                bot.send_message(message.chat.id, "Додано виконавця @{}".format(message.text[1:]), reply_markup=create_cancel_approve_menu())
+                bot.send_message(message.chat.id, (localization.AddedPerformer+" @{}").format(message.text[1:]), reply_markup=create_cancel_approve_menu())
             else:
                 buffer.assignees.append(message.text)
-                bot.send_message(message.chat.id, "Додано виконавця @{}".format(message.text), reply_markup=create_cancel_approve_menu())
+                bot.send_message(message.chat.id, (localization.AddedPerformer+" @{}").format(message.text), reply_markup=create_cancel_approve_menu())
         
             set_task_under_construction_swap_buffer(message.chat.id, buffer)
 
         case States.CREATE_TASK_CHANGE_ATTACHMENT:
-            if message.text == "Назад":
+            if message.text == localization.Back:
                 render_optionals_menu(message)
                 return
 
-            if message.text == "OK":
+            if message.text == localization.Ok:
                 buffer = get_task_under_construction(message.chat.id)
                 swap_buffer = get_task_under_construction_swap_buffer(message.chat.id)
                 buffer.attachments = swap_buffer.attachments
@@ -382,7 +383,7 @@ def create_task(current_menu, message):
             set_task_under_construction_swap_buffer(message.chat.id, buffer)
 
         case States.CREATE_TASK_CHANGE_DUE_DATE:
-            if message.text == "Назад":
+            if message.text == localization.Back:
                 render_optionals_menu(message)
                 return
             buffer = get_task_under_construction(message.chat.id)
@@ -394,55 +395,54 @@ def create_task(current_menu, message):
                 set_task_under_construction(message.chat.id, buffer)
                 render_optionals_menu(message)
             except ValueError:
-                bot.send_message(message.chat.id, "Будь-ласка введіть дату у форматі 1970-01-01 00:00:00.", reply_markup=create_cancel_menu())
+                bot.send_message(message.chat.id, localization.EnterDateInFormat, reply_markup=create_cancel_menu())
 
         case States.CREATE_TASK_OPTIONALS:
-            # TODO: Fix hardcoded message contents
-            if message.text == "Назва завдання":
+            if message.text == localization.TaskName:
                 set_state(message.chat.id, States.CREATE_TASK_CHANGE_NAME)
-                bot.send_message(message.chat.id, 'Введіть назву завдання', reply_markup=create_cancel_menu())
+                bot.send_message(message.chat.id, localization.EnterTaskName, reply_markup=create_cancel_menu())
                 return
 
-            if message.text == "Опис завдання":
+            if message.text == localization.TaskDescription:
                 set_state(message.chat.id, States.CREATE_TASK_CHANGE_DESCRIPTION)
-                bot.send_message(message.chat.id, 'Введіть опис завдання', reply_markup=create_cancel_menu())
+                bot.send_message(message.chat.id, localization.EnterTaskDescription, reply_markup=create_cancel_menu())
                 return
 
-            if message.text == "Estimate":
+            if message.text == localization.Estimate:
                 set_state(message.chat.id, States.CREATE_TASK_CHANGE_ESTIMATE)
-                bot.send_message(message.chat.id, 'Введіть estimate:', reply_markup=create_cancel_menu())
+                bot.send_message(message.chat.id, localization.EnterEstimate, reply_markup=create_cancel_menu())
                 return
 
-            if message.text == "Ролі виконавців":
+            if message.text == localization.RolesPerformers:
                 set_state(message.chat.id, States.CREATE_TASK_CHANGE_ROLES)
-                bot.send_message(message.chat.id, 'Оберіть ролі виконавців', reply_markup=create_cancel_approve_menu())
+                bot.send_message(message.chat.id, localization.ChooseRolesPerformers, reply_markup=create_cancel_approve_menu())
                 show_roles_as_buttons(message)
                 return
 
-            if message.text == "Дедлайн":
+            if message.text == localization.Deadline:
                 set_state(message.chat.id, States.CREATE_TASK_CHANGE_DUE_DATE)
-                bot.send_message(message.chat.id, 'Введіть дедлайн у форматі 1970-01-01 00:00:00.', reply_markup=create_cancel_menu())
+                bot.send_message(message.chat.id, localization.EnterDeadlineInFormat, reply_markup=create_cancel_menu())
                 return
 
-            if message.text == "Додати виконавців":
+            if message.text == localization.AddPerformers:
                 set_state(message.chat.id, States.CREATE_TASK_CHANGE_ASSIGNEES)
-                bot.send_message(message.chat.id, 'Введіть нікнейми виконавців.', reply_markup=create_cancel_approve_menu())
+                bot.send_message(message.chat.id, localization.EnterNicknamesPerformers, reply_markup=create_cancel_approve_menu())
                 return
 
-            if message.text == "Прикріплення":
+            if message.text == localization.Attachment:
                 set_state(message.chat.id, States.CREATE_TASK_CHANGE_ATTACHMENT)
-                bot.send_message(message.chat.id, 'Відправте прикріплення:', reply_markup=create_cancel_approve_menu())
+                bot.send_message(message.chat.id, localization.SendAttachment, reply_markup=create_cancel_approve_menu())
                 return
 
-            if message.text == "Назад":
+            if message.text == localization.Back:
                 execute_cancel_menu(message)
                 return
 
-            if message.text == "Preview":
+            if message.text == localization.Preview:
                 preview_task(get_task_under_construction(message.chat.id), message)
                 return
 
-            if message.text == "Створити":
+            if message.text == localization.Create:
                 execute_create_task(get_task_under_construction(message.chat.id), message)
                 set_state(message.chat.id, States.MAIN_MENU)
                 render_main_menu(message)
@@ -480,9 +480,9 @@ def query_handler(call):
     print("Callback query handler: {}".format(call.data))
 
     match call.message.text:
-        case "Оберіть завдання":
+        case localization.ChooseTask:
             show_task_by_id(call)
-        case "👇": # TODO: ???
+        case localization.DownPointing: # TODO: ???
             add_role_to_task(call)
 
 bot.infinity_polling()
