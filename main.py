@@ -9,9 +9,11 @@ from KEYS import *
 
 from database import query_db
 from task import Task
-from local_task_store import get_task_under_construction, get_task_under_construction_swap_buffer, set_task_under_construction, set_task_under_construction_swap_buffer
+from local_task_store import get_task_under_construction, get_task_under_construction_swap_buffer, \
+    set_task_under_construction, set_task_under_construction_swap_buffer
 
 role_id_to_role_name_cache = dict()
+
 
 def get_member_username_from_id(id):
     _, response = query_db("SELECT * FROM users_id WHERE UserID = %s", (id,))
@@ -22,13 +24,17 @@ def get_member_username_from_id(id):
 
     return '@' + response[0][1]
 
+
 def update_id_username_relation(message):
     _, response = query_db("SELECT * FROM users_id WHERE UserID = %s", (message.from_user.id,))
 
     if response:
-        query_db("UPDATE users_id SET Username = %s WHERE UserID = %s", (message.from_user.username, message.from_user.id))
+        query_db("UPDATE users_id SET Username = %s WHERE UserID = %s",
+                 (message.from_user.username, message.from_user.id))
     else:
-        query_db("INSERT INTO users_id (UserID, Username) VALUES (%s, %s)", (message.from_user.id, message.from_user.username))
+        query_db("INSERT INTO users_id (UserID, Username) VALUES (%s, %s)",
+                 (message.from_user.id, message.from_user.username))
+
 
 class States(Enum):
     MAIN_MENU = 1
@@ -42,8 +48,11 @@ class States(Enum):
     CREATE_TASK_CHANGE_ESTIMATE = 9
     CREATE_TASK_CHANGE_ATTACHMENT = 10
     CREATE_TASK_CHANGE_DUE_DATE = 11
+    DEPARTMENT_SELECTION_MENU = 12
+
 
 bot = telebot.TeleBot(TOKEN)
+
 
 def get_state(chat_id):
     _, response = query_db("SELECT State FROM _states WHERE ChatID = %s", (chat_id,))
@@ -55,6 +64,7 @@ def get_state(chat_id):
     print("Received state {}".format(response[0][0]))
     return States(response[0][0])
 
+
 def set_state(chat_id, state):
     print("Setting state to {}".format(state))
     _, response = query_db("SELECT * FROM _states WHERE ChatID = %s", (chat_id,))
@@ -63,6 +73,7 @@ def set_state(chat_id, state):
         query_db("UPDATE _states SET State = %s WHERE ChatID = %s", (state.value, chat_id))
     else:
         query_db("INSERT INTO _states (ChatID, State) VALUES (%s, %s)", (chat_id, state.value))
+
 
 def escape_string(str):
     output = ""
@@ -79,6 +90,7 @@ def escape_string(str):
 
     return output
 
+
 def format_table_form_query_result(response, description, **kwargs):
     table = PrettyTable(**kwargs)
     table.align = "l"
@@ -87,19 +99,22 @@ def format_table_form_query_result(response, description, **kwargs):
         table.add_row(row)
     return str(table)
 
+
 def get_table_to_print(query, parameters, **kwargs):
     description, response = query_db(query, parameters)
     return '`' + format_table_form_query_result(response, description, **kwargs) + '`'
 
+
 def make_main_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item1=types.KeyboardButton(localization.CreateTask)
-    item2=types.KeyboardButton(localization.ViewTasks)
-    item3=types.KeyboardButton(localization.ListOfMembersSPF)
-    item4=types.KeyboardButton(localization.ReportError)
+    item1 = types.KeyboardButton(localization.CreateTask)
+    item2 = types.KeyboardButton(localization.ViewTasks)
+    item3 = types.KeyboardButton(localization.ListOfMembersSPF)
+    item4 = types.KeyboardButton(localization.ReportError)
     markup.add(item1, item2)
     markup.add(item3, item4)
     return markup
+
 
 def main_menu_handler(message):
     set_state(message.chat.id, States.MAIN_MENU)
@@ -108,18 +123,52 @@ def main_menu_handler(message):
     elif message.text == localization.ViewTasks:
         show_tasks_as_buttons(message)
     elif message.text == localization.ListOfMembersSPF:
-        bot.send_message(message.chat.id, get_table_to_print("SELECT * FROM members", None), parse_mode='MarkdownV2')
+        set_state(message.chat.id, States.DEPARTMENT_SELECTION_MENU)
+        bot.send_message(message.chat.id, localization.DepartmentSelectionMenuMessage,
+                         reply_markup=create_department_selection_menu())
     elif message.text == localization.ReportError:
         bot.send_message(message.chat.id, localization.NothingWorks)
     else:
         print("Received message \"{}\" in main_menu_handler".format(message.text))
 
+
+def department_selection_menu_handler(message):
+    table = ""
+    if message.text == localization.InfoDepartment:
+        table += "info_department"
+    elif message.text == localization.CulturalDepartment:
+        table = "cultural_department"
+    elif message.text == localization.ScienceDepartment:
+        table = "science_department"
+    elif message.text == localization.ChytalkaDepartment:
+        table = "chytalka_department"
+    elif message.text == localization.AllDepartments:
+        table = "members"
+    elif message.text == localization.Back:
+        execute_cancel_menu(message)
+        return
+    else:
+        print("Received message \"{}\" in department_selection_menu_handler".format(message.text))
+    description, response = query_db(f"SELECT COUNT(*) FROM {table}", None)
+    participants_table_row_count = int(response[0][0])
+    page_size = 35
+    page = 1
+    offset = (page - 1) * page_size
+    while offset < participants_table_row_count:
+        bot.send_message(message.chat.id,
+                         get_table_to_print(f"SELECT * FROM {table} LIMIT {page_size} OFFSET {offset}", None),
+                         parse_mode='MarkdownV2')
+        page += 1
+        offset = (page - 1) * page_size
+
+
 def render_main_menu(message):
-    markup=make_main_menu()
+    markup = make_main_menu()
 
     update_id_username_relation(message)
 
     bot.send_message(message.chat.id, localization.ChooseAction, reply_markup=markup)
+
 
 def show_tasks_as_buttons(message):
     markup = telebot.types.InlineKeyboardMarkup()
@@ -127,8 +176,9 @@ def show_tasks_as_buttons(message):
     i = 1
     for elem in response:
         markup.add(telebot.types.InlineKeyboardButton(text=elem[1], callback_data=elem[0]))
-        i+=1
+        i += 1
     bot.send_message(message.chat.id, text=localization.ChooseTask, reply_markup=markup)
+
 
 def show_roles_as_buttons(message):
     global role_id_to_role_name_cache
@@ -140,41 +190,50 @@ def show_roles_as_buttons(message):
     for elem in response:
         markup.add(telebot.types.InlineKeyboardButton(text=elem[1], callback_data=elem[0]))
         role_id_to_role_name_cache[elem[0]] = elem[1]
-        i+=1
+        i += 1
     bot.send_message(message.chat.id, text=localization.DownPointing, reply_markup=markup)
+
 
 def show_task_by_id(call):
     markup = telebot.types.InlineKeyboardMarkup()
     description, response = query_db("SELECT * FROM tasks WHERE TaskID = %s", (call.data,))
-    formatted = ("№{}\n<b>{}</b>\n\n{}\n\n"+localization.Created+": <i>{}</i>\n"+localization.Deadline+": <i>{}</i>\n\n"+localization.Cost+": <b>{}</b>\n\n"+localization.Author+": <i>{}</i>\n\n").format(response[0][0], escape_string(response[0][1]), escape_string(response[0][2]), response[0][4], response[0][5], response[0][6], get_member_username_from_id(response[0][3]))
+    formatted = (
+                "№{}\n<b>{}</b>\n\n{}\n\n" + localization.Created + ": <i>{}</i>\n" + localization.Deadline + ": <i>{}</i>\n\n" + localization.Cost + ": <b>{}</b>\n\n" + localization.Author + ": <i>{}</i>\n\n").format(
+        response[0][0], escape_string(response[0][1]), escape_string(response[0][2]), response[0][4], response[0][5],
+        response[0][6], get_member_username_from_id(response[0][3]))
     bot.send_message(call.from_user.id, formatted, parse_mode='HTML')
-    
+
     values = response[0][7].split(' ')
     index = 0
     while index < len(values) - 1:
         bot.forward_message(call.from_user.id, values[index], values[index + 1])
         index += 2
 
+
 def preview_task(task, message):
     markup = telebot.types.InlineKeyboardMarkup()
-    formatted = ("<b>{}</b>\n\n{}\n\n"+localization.Deadline+": <i>{}</i>\n\n"+localization.Cost+": <b>{}</b>\n\n"+localization.Author+": <i>{}</i>\n\n").format(task.name, task.description, task.due_date, task.estimate, get_member_username_from_id(message.from_user.id))
+    formatted = (
+                "<b>{}</b>\n\n{}\n\n" + localization.Deadline + ": <i>{}</i>\n\n" + localization.Cost + ": <b>{}</b>\n\n" + localization.Author + ": <i>{}</i>\n\n").format(
+        task.name, task.description, task.due_date, task.estimate, get_member_username_from_id(message.from_user.id))
     bot.send_message(message.chat.id, formatted, parse_mode='HTML')
-    
+
     for el in task.attachments:
         bot.forward_message(message.chat.id, el[0], el[1])
-    
-    
+
+
 def add_role_to_task(call):
     buffer = get_task_under_construction_swap_buffer(call.from_user.id)
     try:
         if int(call.data) not in buffer.roles:
-            bot.send_message(call.from_user.id, text=(localization.AddedRole+": {}").format(role_id_to_role_name_cache[int(call.data)]))
+            bot.send_message(call.from_user.id,
+                             text=(localization.AddedRole + ": {}").format(role_id_to_role_name_cache[int(call.data)]))
         else:
             bot.send_message(call.from_user.id, text=localization.RoleIsAlreadyAttached)
     except:
         print("Couln't find role name matching role ID {}".format(call.data))
     buffer.roles.append(int(call.data))
     set_task_under_construction_swap_buffer(call.from_user.id, buffer)
+
 
 def text_message_handler(message):
     current_menu = get_state(message.chat.id)
@@ -183,6 +242,8 @@ def text_message_handler(message):
         match current_menu:
             case States.MAIN_MENU:
                 main_menu_handler(message)
+            case States.DEPARTMENT_SELECTION_MENU:
+                department_selection_menu_handler(message)
             case States.CREATE_TASK_NAME:
                 create_task(current_menu, message)
             case States.CREATE_TASK_DESCRIPTION:
@@ -202,40 +263,44 @@ def text_message_handler(message):
             case States.CREATE_TASK_CHANGE_ATTACHMENT:
                 create_task(current_menu, message)
             case States.CREATE_TASK_CHANGE_DUE_DATE:
-                create_task(current_menu, message)                                                                                         
+                create_task(current_menu, message)
             case _:
                 print("Invalid state {}".format(current_menu))
+
 
 def execute_cancel_menu(message):
     set_state(message.chat.id, States.MAIN_MENU)
     render_main_menu(message)
 
+
 def create_cancel_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item1=types.KeyboardButton(localization.Back)
+    item1 = types.KeyboardButton(localization.Back)
     markup.add(item1)
     return markup
 
+
 def create_cancel_approve_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item1=types.KeyboardButton(localization.Back)
-    item2=types.KeyboardButton(localization.Ok)
+    item1 = types.KeyboardButton(localization.Back)
+    item2 = types.KeyboardButton(localization.Ok)
     markup.add(item1, item2)
     return markup
+
 
 def create_edit_task_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
 
-    item1=types.KeyboardButton(localization.TaskName)
-    item2=types.KeyboardButton(localization.TaskDescription)
-    item3=types.KeyboardButton(localization.RolesPerformers)
-    item4=types.KeyboardButton(localization.AddPerformers)
-    item5=types.KeyboardButton(localization.Deadline)
-    item6=types.KeyboardButton(localization.Attachment)
-    item7=types.KeyboardButton(localization.Estimate)
-    item8=types.KeyboardButton(localization.Back)
-    item9=types.KeyboardButton(localization.Preview)
-    item10=types.KeyboardButton(localization.Create)
+    item1 = types.KeyboardButton(localization.TaskName)
+    item2 = types.KeyboardButton(localization.TaskDescription)
+    item3 = types.KeyboardButton(localization.RolesPerformers)
+    item4 = types.KeyboardButton(localization.AddPerformers)
+    item5 = types.KeyboardButton(localization.Deadline)
+    item6 = types.KeyboardButton(localization.Attachment)
+    item7 = types.KeyboardButton(localization.Estimate)
+    item8 = types.KeyboardButton(localization.Back)
+    item9 = types.KeyboardButton(localization.Preview)
+    item10 = types.KeyboardButton(localization.Create)
 
     markup.add(item1, item2)
     markup.add(item3, item4)
@@ -244,14 +309,36 @@ def create_edit_task_menu():
 
     return markup
 
+
+def create_department_selection_menu():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item1 = types.KeyboardButton(localization.InfoDepartment)
+    item2 = types.KeyboardButton(localization.CulturalDepartment)
+    item3 = types.KeyboardButton(localization.ScienceDepartment)
+    item4 = types.KeyboardButton(localization.ChytalkaDepartment)
+    item5 = types.KeyboardButton(localization.AllDepartments)
+    item6 = types.KeyboardButton(localization.Back)
+
+    markup.add(item1, item2)
+    markup.add(item3, item4)
+    markup.add(item5, item6)
+
+    return markup
+
+
 def execute_create_task(task, message):
     task.creation_date = datetime.datetime.now()
     task.author = message.from_user.id
-    query_db("INSERT INTO spf_management.tasks (TaskName, TaskDescription, AuthorID, CreationDate, DueDate, Estimate, Attachment) VALUES (%s, %s, %s, %s, %s, %s, %s)", (task.name, task.description, task.author, task.creation_date, task.due_date, task.estimate, ' '.join([attachment[0] + " " + attachment[1] for attachment in task.attachments])))
+    query_db(
+        "INSERT INTO spf_management.tasks (TaskName, TaskDescription, AuthorID, CreationDate, DueDate, Estimate, Attachment) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+        (task.name, task.description, task.author, task.creation_date, task.due_date, task.estimate,
+         ' '.join([attachment[0] + " " + attachment[1] for attachment in task.attachments])))
+
 
 def render_optionals_menu(message):
     set_state(message.chat.id, States.CREATE_TASK_OPTIONALS)
     bot.send_message(message.chat.id, localization.RenderOptionalsMenuMessage, reply_markup=create_edit_task_menu())
+
 
 def create_task(current_menu, message):
     match current_menu:
@@ -280,7 +367,8 @@ def create_task(current_menu, message):
             set_task_under_construction(message.chat.id, buffer)
 
             set_state(message.chat.id, States.CREATE_TASK_OPTIONALS)
-            bot.send_message(message.chat.id, localization.RenderOptionalsMenuMessage, reply_markup=create_edit_task_menu())
+            bot.send_message(message.chat.id, localization.RenderOptionalsMenuMessage,
+                             reply_markup=create_edit_task_menu())
         case States.CREATE_TASK_CHANGE_NAME:
             if message.text == localization.Back:
                 render_optionals_menu(message)
@@ -290,7 +378,7 @@ def create_task(current_menu, message):
             buffer.name = message.text
             set_task_under_construction(message.chat.id, buffer)
             render_optionals_menu(message)
-        
+
         case States.CREATE_TASK_CHANGE_DESCRIPTION:
             if message.text == localization.Back:
                 render_optionals_menu(message)
@@ -309,7 +397,7 @@ def create_task(current_menu, message):
             try:
                 if float(message.text) >= 0.0:
                     buffer.estimate = message.text
-                    
+
                     set_task_under_construction(message.chat.id, buffer)
                     render_optionals_menu(message)
                 else:
@@ -335,7 +423,6 @@ def create_task(current_menu, message):
 
             render_optionals_menu(message)
 
-        
         case States.CREATE_TASK_CHANGE_ASSIGNEES:
             if message.text == localization.Back:
                 render_optionals_menu(message)
@@ -355,11 +442,13 @@ def create_task(current_menu, message):
             buffer = get_task_under_construction_swap_buffer(message.chat.id)
             if message.text.startswith('@'):
                 buffer.assignees.append(message.text[1:])
-                bot.send_message(message.chat.id, (localization.AddedPerformer+" @{}").format(message.text[1:]), reply_markup=create_cancel_approve_menu())
+                bot.send_message(message.chat.id, (localization.AddedPerformer + " @{}").format(message.text[1:]),
+                                 reply_markup=create_cancel_approve_menu())
             else:
                 buffer.assignees.append(message.text)
-                bot.send_message(message.chat.id, (localization.AddedPerformer+" @{}").format(message.text), reply_markup=create_cancel_approve_menu())
-        
+                bot.send_message(message.chat.id, (localization.AddedPerformer + " @{}").format(message.text),
+                                 reply_markup=create_cancel_approve_menu())
+
             set_task_under_construction_swap_buffer(message.chat.id, buffer)
 
         case States.CREATE_TASK_CHANGE_ATTACHMENT:
@@ -391,7 +480,7 @@ def create_task(current_menu, message):
             try:
                 datetime.datetime.strptime(message.text, '%Y-%m-%d %H:%M:%S')
                 buffer.due_date = message.text
-                
+
                 set_task_under_construction(message.chat.id, buffer)
                 render_optionals_menu(message)
             except ValueError:
@@ -415,7 +504,8 @@ def create_task(current_menu, message):
 
             if message.text == localization.RolesPerformers:
                 set_state(message.chat.id, States.CREATE_TASK_CHANGE_ROLES)
-                bot.send_message(message.chat.id, localization.ChooseRolesPerformers, reply_markup=create_cancel_approve_menu())
+                bot.send_message(message.chat.id, localization.ChooseRolesPerformers,
+                                 reply_markup=create_cancel_approve_menu())
                 show_roles_as_buttons(message)
                 return
 
@@ -426,12 +516,14 @@ def create_task(current_menu, message):
 
             if message.text == localization.AddPerformers:
                 set_state(message.chat.id, States.CREATE_TASK_CHANGE_ASSIGNEES)
-                bot.send_message(message.chat.id, localization.EnterNicknamesPerformers, reply_markup=create_cancel_approve_menu())
+                bot.send_message(message.chat.id, localization.EnterNicknamesPerformers,
+                                 reply_markup=create_cancel_approve_menu())
                 return
 
             if message.text == localization.Attachment:
                 set_state(message.chat.id, States.CREATE_TASK_CHANGE_ATTACHMENT)
-                bot.send_message(message.chat.id, localization.SendAttachment, reply_markup=create_cancel_approve_menu())
+                bot.send_message(message.chat.id, localization.SendAttachment,
+                                 reply_markup=create_cancel_approve_menu())
                 return
 
             if message.text == localization.Back:
@@ -448,18 +540,18 @@ def create_task(current_menu, message):
                 render_main_menu(message)
                 set_task_under_construction(message.chat.id, Task())
                 set_task_under_construction_swap_buffer(message.chat.id, Task())
-                
+
                 return
 
             render_optionals_menu(message)
-    
+
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     set_state(message.chat.id, States.MAIN_MENU)
 
     render_main_menu(message)
-  
+
 
 @bot.message_handler(content_types=['document', 'photo', 'audio', 'video', 'voice'])
 def document_handler(message):
@@ -470,10 +562,12 @@ def document_handler(message):
         swap_buffer.attachments.append([str(message.chat.id), str(message.message_id)])
         set_task_under_construction_swap_buffer(message.chat.id, swap_buffer)
 
+
 @bot.message_handler(func=lambda message: True)
 def reply_to_message(message):
     print("Reply to message: {}".format(message.text))
     text_message_handler(message)
+
 
 @bot.callback_query_handler(func=lambda call: True)
 def query_handler(call):
@@ -482,7 +576,8 @@ def query_handler(call):
     match call.message.text:
         case localization.ChooseTask:
             show_task_by_id(call)
-        case localization.DownPointing: # TODO: ???
+        case localization.DownPointing:  # TODO: ???
             add_role_to_task(call)
+
 
 bot.infinity_polling()

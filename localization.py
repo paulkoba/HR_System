@@ -35,8 +35,15 @@ EnterDateInFormat = "Будь-ласка введіть дату у формат
 EnterNicknamesPerformers = "Введіть нікнейми виконавців"
 SendAttachment = "Відправте прикріплення"
 
+DepartmentSelectionMenuMessage = "Оберіть департамент"
+InfoDepartment = "Інфодеп"
+CulturalDepartment = "Культдеп"
+ScienceDepartment = "Наукдеп"
+ChytalkaDepartment = "Читалка"
+AllDepartments = "Список усіх членів СПФ"
+
 AddedPerformer = "Додано виконавця"
 AddedRole = "Додано роль"
 RoleIsAlreadyAttached = "Дана роль вже прикріплена до завдання"
 
-DownPointing  = "👇"
+DownPointing = "👇"
