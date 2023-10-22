@@ -68,7 +68,7 @@ def get_state(chat_id):
 def set_state(chat_id, state):
     print("Setting state to {}".format(state))
     _, response = query_db("SELECT * FROM _states WHERE ChatID = %s", (chat_id,))
-
+    print(response)
     if response:
         query_db("UPDATE _states SET State = %s WHERE ChatID = %s", (state.value, chat_id))
     else:
@@ -197,11 +197,13 @@ def show_roles_as_buttons(message):
 def show_task_by_id(call):
     markup = telebot.types.InlineKeyboardMarkup()
     description, response = query_db("SELECT * FROM tasks WHERE TaskID = %s", (call.data,))
+    if call.from_user.id == response[0][3]:
+        markup.add(telebot.types.InlineKeyboardButton(text=localization.Edit, callback_data=call.data))
     formatted = (
                 "№{}\n<b>{}</b>\n\n{}\n\n" + localization.Created + ": <i>{}</i>\n" + localization.Deadline + ": <i>{}</i>\n\n" + localization.Cost + ": <b>{}</b>\n\n" + localization.Author + ": <i>{}</i>\n\n").format(
         response[0][0], escape_string(response[0][1]), escape_string(response[0][2]), response[0][4], response[0][5],
         response[0][6], get_member_username_from_id(response[0][3]))
-    bot.send_message(call.from_user.id, formatted, parse_mode='HTML')
+    bot.send_message(call.from_user.id, formatted, parse_mode='HTML', reply_markup=markup)
 
     values = response[0][7].split(' ')
     index = 0
@@ -327,6 +329,15 @@ def create_department_selection_menu():
 
 
 def execute_create_task(task, message):
+    _, response = query_db("""SELECT CreationDate
+                              FROM spf_management.tasks;""", None)
+    if(task.creation_date,) in response:
+        query_db(
+            """UPDATE spf_management.tasks
+             SET TaskName = %s, TaskDescription = %s, AuthorID= %s, CreationDate= %s, DueDate= %s, Estimate= %s, Attachment= %s WHERE CreationDate = %s""",
+            (task.name, task.description, task.author, task.creation_date, task.due_date, task.estimate,
+             ' '.join([attachment[0] + " " + attachment[1] for attachment in task.attachments]), task.creation_date))
+        return
     task.creation_date = datetime.datetime.now()
     task.author = message.from_user.id
     query_db(
@@ -545,6 +556,20 @@ def create_task(current_menu, message):
 
             render_optionals_menu(message)
 
+def edit_task(call):
+    _, response = query_db("SELECT * FROM tasks WHERE TaskID = %s", (call.data,))
+    ToEdit = Task()
+    ToEdit.name=response[0][1]
+    ToEdit.description=response[0][2]
+    ToEdit.creation_date=response[0][4]
+    ToEdit.due_date=response[0][5]
+    ToEdit.estimate=response[0][6]
+    ToEdit.author=response[0][3]
+    set_task_under_construction(call.message.chat.id, ToEdit)
+    render_optionals_menu(call.message)
+    
+
+
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
@@ -572,12 +597,13 @@ def reply_to_message(message):
 @bot.callback_query_handler(func=lambda call: True)
 def query_handler(call):
     print("Callback query handler: {}".format(call.data))
-
-    match call.message.text:
+    print(call.message.text.split('\n')[0])
+    match call.message.text.split('\n')[0]:
         case localization.ChooseTask:
             show_task_by_id(call)
         case localization.DownPointing:  # TODO: ???
             add_role_to_task(call)
-
+        case text if text.startswith('№'):
+            edit_task(call)
 
 bot.infinity_polling()

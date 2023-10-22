@@ -18,7 +18,7 @@ Attachment = "Прикріплення"
 Estimate = "Estimate"
 Preview = "Preview"
 Create = "Створити"
-
+Edit = "Редагувати"
 Created = "Створено"
 Cost = "Вартість"
 Author = "Автор"
