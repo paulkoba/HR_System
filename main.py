@@ -68,7 +68,6 @@ def get_state(chat_id):
 def set_state(chat_id, state):
     print("Setting state to {}".format(state))
     _, response = query_db("SELECT * FROM _states WHERE ChatID = %s", (chat_id,))
-    print(response)
     if response:
         query_db("UPDATE _states SET State = %s WHERE ChatID = %s", (state.value, chat_id))
     else:
