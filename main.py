@@ -22,17 +22,17 @@ def get_member_username_from_id(id):
         print("Couldn't retrieve username of user with ID: {}".format(id))
         return str(id)
 
-    return '@' + response[0][1]
+    return response[0][1]
 
 
 def update_id_username_relation(message):
     _, response = query_db("SELECT * FROM users_id WHERE UserID = %s", (message.from_user.id,))
 
     if response:
-        query_db("UPDATE users_id SET Username = %s WHERE UserID = %s",
+        query_db("UPDATE users_id SET Username = @%s WHERE UserID = %s",
                  (message.from_user.username, message.from_user.id))
     else:
-        query_db("INSERT INTO users_id (UserID, Username) VALUES (%s, %s)",
+        query_db("INSERT INTO users_id (UserID, Username) VALUES (%s, @%s)",
                  (message.from_user.id, message.from_user.username))
 
 
@@ -343,6 +343,33 @@ def execute_create_task(task, message):
         "INSERT INTO spf_management.tasks (TaskName, TaskDescription, AuthorID, CreationDate, DueDate, Estimate, Attachment) VALUES (%s, %s, %s, %s, %s, %s, %s)",
         (task.name, task.description, task.author, task.creation_date, task.due_date, task.estimate,
          ' '.join([attachment[0] + " " + attachment[1] for attachment in task.attachments])))
+    send_task_to_members(task)
+
+
+def send_task_to_members(task):
+    print(task.roles)
+    for role in task.roles:
+        _, response = query_db("""SELECT MemberID
+                              FROM spf_management.members_roles
+                              WHERE RoleID = %s;""", (role,))
+        print(response)
+
+        for member in response:
+            _, username = query_db("""SELECT Telegram 
+                                FROM spf_management.members
+                                WHERE MemberID = %s;""", (member[0],))
+            print(member)
+            print(username[0][0])
+
+            _, ids = query_db("""SELECT UserID 
+                                FROM spf_management.users_id
+                                WHERE Username = %s;""", (username[0][0],))
+            print(ids)
+
+
+            bot.send_message(ids[0][0], text=localization.NothingWorks)
+        
+
 
 
 def render_optionals_menu(message):
@@ -557,14 +584,14 @@ def create_task(current_menu, message):
 
 def edit_task(call):
     _, response = query_db("SELECT * FROM tasks WHERE TaskID = %s", (call.data,))
-    ToEdit = Task()
-    ToEdit.name=response[0][1]
-    ToEdit.description=response[0][2]
-    ToEdit.creation_date=response[0][4]
-    ToEdit.due_date=response[0][5]
-    ToEdit.estimate=response[0][6]
-    ToEdit.author=response[0][3]
-    set_task_under_construction(call.message.chat.id, ToEdit)
+    to_edit = Task()
+    to_edit.name=response[0][1]
+    to_edit.description=response[0][2]
+    to_edit.creation_date=response[0][4]
+    to_edit.due_date=response[0][5]
+    to_edit.estimate=response[0][6]
+    to_edit.author=response[0][3]
+    set_task_under_construction(call.message.chat.id, to_edit)
     render_optionals_menu(call.message)
     
 
