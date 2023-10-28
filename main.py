@@ -1,6 +1,7 @@
 import telebot
 import datetime
 import localization
+import anonymous_voting
 
 from telebot import types
 from prettytable import PrettyTable
@@ -49,6 +50,7 @@ class States(Enum):
     CREATE_TASK_CHANGE_ATTACHMENT = 10
     CREATE_TASK_CHANGE_DUE_DATE = 11
     DEPARTMENT_SELECTION_MENU = 12
+    CREATE_VOTING = 13
 
 
 bot = telebot.TeleBot(TOKEN)
@@ -110,8 +112,10 @@ def make_main_menu():
     item2 = types.KeyboardButton(localization.ViewTasks)
     item3 = types.KeyboardButton(localization.ListOfMembersSPF)
     item4 = types.KeyboardButton(localization.ReportError)
+    item5 = types.KeyboardButton(localization.AnonymousVoting)
     markup.add(item1, item2)
     markup.add(item3, item4)
+    markup.add(item5)
     return markup
 
 
@@ -127,6 +131,9 @@ def main_menu_handler(message):
                          reply_markup=create_department_selection_menu())
     elif message.text == localization.ReportError:
         bot.send_message(message.chat.id, localization.NothingWorks)
+    elif message.text == localization.AnonymousVoting:
+        set_state(message.chat.id, States.CREATE_VOTING)
+        create_anonymous_voting(message)
     else:
         print("Received message \"{}\" in main_menu_handler".format(message.text))
 
@@ -178,6 +185,8 @@ def show_tasks_as_buttons(message):
         i += 1
     bot.send_message(message.chat.id, text=localization.ChooseTask, reply_markup=markup)
 
+def create_anonymous_voting(message):
+    anonymous_voting.start_create_voting(message)
 
 def show_roles_as_buttons(message):
     global role_id_to_role_name_cache
@@ -211,15 +220,15 @@ def show_task_by_id(call):
         index += 2
 
 
-def preview_task(task, message):
+def preview_task(task, chat_id):
     markup = telebot.types.InlineKeyboardMarkup()
     formatted = (
                 "<b>{}</b>\n\n{}\n\n" + localization.Deadline + ": <i>{}</i>\n\n" + localization.Cost + ": <b>{}</b>\n\n" + localization.Author + ": <i>{}</i>\n\n").format(
-        task.name, task.description, task.due_date, task.estimate, get_member_username_from_id(message.from_user.id))
-    bot.send_message(message.chat.id, formatted, parse_mode='HTML')
+        task.name, task.description, task.due_date, task.estimate, get_member_username_from_id(task.author))
+    bot.send_message(chat_id, formatted, parse_mode='HTML')
 
     for el in task.attachments:
-        bot.forward_message(message.chat.id, el[0], el[1])
+        bot.forward_message(chat_id, el[0], el[1])
 
 
 def add_role_to_task(call):
@@ -265,6 +274,12 @@ def text_message_handler(message):
                 create_task(current_menu, message)
             case States.CREATE_TASK_CHANGE_DUE_DATE:
                 create_task(current_menu, message)
+            case States.CREATE_VOTING:
+                if(anonymous_voting.get_state_voting(message.chat.id) == anonymous_voting.StatesVoting.CREATE_VOTING):
+                    if(message.text == localization.Back):
+                        execute_cancel_menu(message)
+                        return
+                anonymous_voting.voting_menus_handler(message)
             case _:
                 print("Invalid state {}".format(current_menu))
 
@@ -366,9 +381,7 @@ def send_task_to_members(task):
                                 WHERE Username = %s;""", (username[0][0],))
             print(ids)
 
-
-            bot.send_message(ids[0][0], text=localization.NothingWorks)
-        
+            preview_task(task, ids[0][0])
 
 
 
@@ -568,7 +581,10 @@ def create_task(current_menu, message):
                 return
 
             if message.text == localization.Preview:
-                preview_task(get_task_under_construction(message.chat.id), message)
+                task = get_task_under_construction(message.chat.id)
+                task.author = get_member_username_from_id(message.from_user.id)
+                set_task_under_construction(message.chat.id, task)
+                preview_task(task, message.chat.id)
                 return
 
             if message.text == localization.Create:
@@ -595,8 +611,6 @@ def edit_task(call):
     render_optionals_menu(call.message)
     
 
-
-
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     set_state(message.chat.id, States.MAIN_MENU)
@@ -613,12 +627,10 @@ def document_handler(message):
         swap_buffer.attachments.append([str(message.chat.id), str(message.message_id)])
         set_task_under_construction_swap_buffer(message.chat.id, swap_buffer)
 
-
 @bot.message_handler(func=lambda message: True)
 def reply_to_message(message):
     print("Reply to message: {}".format(message.text))
     text_message_handler(message)
-
 
 @bot.callback_query_handler(func=lambda call: True)
 def query_handler(call):
@@ -631,5 +643,18 @@ def query_handler(call):
             add_role_to_task(call)
         case text if text.startswith('№'):
             edit_task(call)
+            
+    if call.data.startswith('register_user_voting'):
+        user_id = call.from_user.id
+        creator_id = call.data.split('/')[1]
+        anonymous_voting.add_participant_voting(creator_id, user_id)
+    if call.data.startswith('voting_chat'):
+        chat_id = call.data.split('/')[1]
+        anonymous_voting.set_voting_chat_id(call.message, chat_id)
+        
+@bot.message_handler(content_types=["poll"])
+def poll_handler(message: types.Message):
+    if(anonymous_voting.get_state_voting(message.chat.id) == anonymous_voting.StatesVoting.CREATE_VOTING_POLL):
+        anonymous_voting.create_voting_poll_handler(message)
 
 bot.infinity_polling()
