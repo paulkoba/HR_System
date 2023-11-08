@@ -179,11 +179,16 @@ def render_main_menu(message):
 def show_tasks_as_buttons(message):
     markup = telebot.types.InlineKeyboardMarkup()
     description, response = query_db("SELECT * FROM tasks", None)
-    i = 1
-    for elem in response:
-        markup.add(telebot.types.InlineKeyboardButton(text=elem[1], callback_data=elem[0]))
-        i += 1
-    bot.send_message(message.chat.id, text=localization.ChooseTask, reply_markup=markup)
+    print("description", description)
+    print("response", response)
+    if response != [] :
+        i = 1
+        for elem in response:
+            markup.add(telebot.types.InlineKeyboardButton(text=elem[1], callback_data=elem[0]))
+            i += 1
+        bot.send_message(message.chat.id, text=localization.ChooseTask, reply_markup=markup)
+    else :
+        bot.send_message(message.chat.id, text=localization.NoTasks)
 
 def create_anonymous_voting(message):
     anonymous_voting.start_create_voting(message)
