@@ -15,6 +15,17 @@ from local_task_store import get_task_under_construction, get_task_under_constru
 
 role_id_to_role_name_cache = dict()
 
+def is_current_user_administrator(id):
+    try:
+        username = get_member_username_from_id(id)
+        _, response = query_db("SELECT MemberID FROM members WHERE Telegram = %s", (username,))
+        _, response = query_db("SELECT * FROM administrators WHERE MemberID = %s", (response[0][0],))
+        print("Verifying that the current user {} is an administrator: {}".format(id, len(response)))
+        return len(response) >= 1
+    except:
+        print("Couldn't verify user {} as an administrator".format(id))
+        pass
+    return False
 
 def get_member_username_from_id(id):
     _, response = query_db("SELECT * FROM users_id WHERE UserID = %s", (id,))
@@ -106,14 +117,20 @@ def get_table_to_print(query, parameters, **kwargs):
     return '`' + format_table_form_query_result(response, description, **kwargs) + '`'
 
 
-def make_main_menu():
+def make_main_menu(is_administrator):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    
     item1 = types.KeyboardButton(localization.CreateTask)
     item2 = types.KeyboardButton(localization.ViewTasks)
     item3 = types.KeyboardButton(localization.ListOfMembersSPF)
     item4 = types.KeyboardButton(localization.ReportError)
     item5 = types.KeyboardButton(localization.AnonymousVoting)
-    markup.add(item1, item2)
+    
+    if is_administrator:
+        markup.add(item1, item2)
+    else:
+        markup.add(item2)
+    
     markup.add(item3, item4)
     markup.add(item5)
     return markup
@@ -169,7 +186,7 @@ def department_selection_menu_handler(message):
 
 
 def render_main_menu(message):
-    markup = make_main_menu()
+    markup = make_main_menu(is_current_user_administrator(message.from_user.id))
 
     update_id_username_relation(message)
 
@@ -210,7 +227,7 @@ def show_roles_as_buttons(message):
 def show_task_by_id(call):
     markup = telebot.types.InlineKeyboardMarkup()
     description, response = query_db("SELECT * FROM tasks WHERE TaskID = %s", (call.data,))
-    if call.from_user.id == response[0][3]:
+    if call.from_user.id == response[0][3] or is_current_user_administrator(call.from_user.id):
         markup.add(telebot.types.InlineKeyboardButton(text=localization.Edit, callback_data=call.data))
     formatted = (
                 "№{}\n<b>{}</b>\n\n{}\n\n" + localization.Created + ": <i>{}</i>\n" + localization.Deadline + ": <i>{}</i>\n\n" + localization.Cost + ": <b>{}</b>\n\n" + localization.Author + ": <i>{}</i>\n\n").format(
@@ -348,6 +365,10 @@ def create_department_selection_menu():
 
 
 def execute_create_task(task, message):
+    if not is_current_user_administrator(message.from_user.id):
+        bot.send_message(message.chat.id, localization.AntiAdministratorSpoofingMessage)
+        return
+
     _, response = query_db("""SELECT CreationDate
                               FROM spf_management.tasks;""", None)
     if(task.creation_date,) in response:
