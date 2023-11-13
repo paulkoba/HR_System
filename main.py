@@ -1,7 +1,6 @@
 import telebot
 import datetime
 import localization
-import anonymous_voting
 
 from telebot import types
 from prettytable import PrettyTable
@@ -61,8 +60,6 @@ class States(Enum):
     CREATE_TASK_CHANGE_ATTACHMENT = 10
     CREATE_TASK_CHANGE_DUE_DATE = 11
     DEPARTMENT_SELECTION_MENU = 12
-    CREATE_VOTING = 13
-
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -122,17 +119,14 @@ def make_main_menu(is_administrator):
     
     item1 = types.KeyboardButton(localization.CreateTask)
     item2 = types.KeyboardButton(localization.ViewTasks)
-    item3 = types.KeyboardButton(localization.ListOfMembersSPF)
     item4 = types.KeyboardButton(localization.ReportError)
-    item5 = types.KeyboardButton(localization.AnonymousVoting)
     
     if is_administrator:
         markup.add(item1, item2)
     else:
         markup.add(item2)
     
-    markup.add(item3, item4)
-    markup.add(item5)
+    markup.add(item4)
     return markup
 
 
@@ -142,10 +136,6 @@ def main_menu_handler(message):
         create_task(get_state(message.chat.id), message)
     elif message.text == localization.ViewTasks:
         show_tasks_as_buttons(message)
-    elif message.text == localization.ListOfMembersSPF:
-        set_state(message.chat.id, States.DEPARTMENT_SELECTION_MENU)
-        bot.send_message(message.chat.id, localization.DepartmentSelectionMenuMessage,
-                         reply_markup=create_department_selection_menu())
     elif message.text == localization.ReportError:
         bot.send_message(message.chat.id, localization.NothingWorks)
     elif message.text == localization.AnonymousVoting:
@@ -153,37 +143,6 @@ def main_menu_handler(message):
         create_anonymous_voting(message)
     else:
         print("Received message \"{}\" in main_menu_handler".format(message.text))
-
-
-def department_selection_menu_handler(message):
-    table = ""
-    if message.text == localization.InfoDepartment:
-        table += "info_department"
-    elif message.text == localization.CulturalDepartment:
-        table = "cultural_department"
-    elif message.text == localization.ScienceDepartment:
-        table = "science_department"
-    elif message.text == localization.ChytalkaDepartment:
-        table = "chytalka_department"
-    elif message.text == localization.AllDepartments:
-        table = "members"
-    elif message.text == localization.Back:
-        execute_cancel_menu(message)
-        return
-    else:
-        print("Received message \"{}\" in department_selection_menu_handler".format(message.text))
-    description, response = query_db(f"SELECT COUNT(*) FROM {table}", None)
-    participants_table_row_count = int(response[0][0])
-    page_size = 35
-    page = 1
-    offset = (page - 1) * page_size
-    while offset < participants_table_row_count:
-        bot.send_message(message.chat.id,
-                         get_table_to_print(f"SELECT * FROM {table} LIMIT {page_size} OFFSET {offset}", None),
-                         parse_mode='MarkdownV2')
-        page += 1
-        offset = (page - 1) * page_size
-
 
 def render_main_menu(message):
     markup = make_main_menu(is_current_user_administrator(message.from_user.id))
@@ -274,8 +233,6 @@ def text_message_handler(message):
         match current_menu:
             case States.MAIN_MENU:
                 main_menu_handler(message)
-            case States.DEPARTMENT_SELECTION_MENU:
-                department_selection_menu_handler(message)
             case States.CREATE_TASK_NAME:
                 create_task(current_menu, message)
             case States.CREATE_TASK_DESCRIPTION:
@@ -296,12 +253,6 @@ def text_message_handler(message):
                 create_task(current_menu, message)
             case States.CREATE_TASK_CHANGE_DUE_DATE:
                 create_task(current_menu, message)
-            case States.CREATE_VOTING:
-                if(anonymous_voting.get_state_voting(message.chat.id) == anonymous_voting.StatesVoting.CREATE_VOTING):
-                    if(message.text == localization.Back):
-                        execute_cancel_menu(message)
-                        return
-                anonymous_voting.voting_menus_handler(message)
             case _:
                 print("Invalid state {}".format(current_menu))
 
@@ -346,23 +297,6 @@ def create_edit_task_menu():
     markup.add(item8, item9, item10)
 
     return markup
-
-
-def create_department_selection_menu():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item1 = types.KeyboardButton(localization.InfoDepartment)
-    item2 = types.KeyboardButton(localization.CulturalDepartment)
-    item3 = types.KeyboardButton(localization.ScienceDepartment)
-    item4 = types.KeyboardButton(localization.ChytalkaDepartment)
-    item5 = types.KeyboardButton(localization.AllDepartments)
-    item6 = types.KeyboardButton(localization.Back)
-
-    markup.add(item1, item2)
-    markup.add(item3, item4)
-    markup.add(item5, item6)
-
-    return markup
-
 
 def execute_create_task(task, message):
     if not is_current_user_administrator(message.from_user.id):
@@ -670,17 +604,4 @@ def query_handler(call):
         case text if text.startswith('№'):
             edit_task(call)
             
-    if call.data.startswith('register_user_voting'):
-        user_id = call.from_user.id
-        creator_id = call.data.split('/')[1]
-        anonymous_voting.add_participant_voting(creator_id, user_id)
-    if call.data.startswith('voting_chat'):
-        chat_id = call.data.split('/')[1]
-        anonymous_voting.set_voting_chat_id(call.message, chat_id)
-        
-@bot.message_handler(content_types=["poll"])
-def poll_handler(message: types.Message):
-    if(anonymous_voting.get_state_voting(message.chat.id) == anonymous_voting.StatesVoting.CREATE_VOTING_POLL):
-        anonymous_voting.create_voting_poll_handler(message)
-
 bot.infinity_polling()
