@@ -21,7 +21,7 @@ def create_connection(host_name, user_name, user_password, db_name):
     return connection
 
 lock = threading.Lock()
-connection = create_connection(IP, USERNAME, PASSWORD, "spf_management")
+connection = create_connection(IP, USERNAME, PASSWORD, "hr_system")
 
 def query_db(query, parameters):
     global lock
