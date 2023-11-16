@@ -1,12 +1,11 @@
 import telebot
 import datetime
 import localization
-
+from states import States
 from telebot import types
 from prettytable import PrettyTable
-from enum import Enum
 from KEYS import *
-
+from utils import *
 from database import query_db
 from task import Task
 from local_task_store import get_task_under_construction, get_task_under_construction_swap_buffer, \
@@ -38,12 +37,22 @@ def get_member_username_from_id(id):
 
     return response[0][1]
 
+
+def get_member_id_from_id(id):
+    _, response = query_db("SELECT MemberID FROM users_id WHERE UserID = %s", (id,))
+
+    if len(response) == 0:
+        print("Couldn't retrieve username of user with ID: {}".format(id))
+        return str(id)
+
+    return response[0][0]
+
 def get_full_name_from_member_id(id):
     _, response = query_db("SELECT Name, Surname FROM members WHERE MemberID = %s", (id,))
 
     if len(response) == 0:
         print("Couldn't retrieve username of user with ID: {}".format(id))
-        return str(id)
+        return "None"
 
     return response[0][0] + " " + response[0][1]
 
@@ -71,29 +80,6 @@ def update_id_username_relation(message):
     else:
         query_db("INSERT INTO users_id (UserID, Username) VALUES (%s, @%s)",
                  (message.from_user.id, message.from_user.username))
-
-
-class States(Enum):
-    MAIN_MENU = 1
-    CREATE_TASK_NAME = 2
-    CREATE_TASK_DESCRIPTION = 3
-    CREATE_TASK_OPTIONALS = 4
-    CREATE_TASK_CHANGE_NAME = 5
-    CREATE_TASK_CHANGE_DESCRIPTION = 6
-    CREATE_TASK_CHANGE_ROLES = 7
-    CREATE_TASK_CHANGE_ASSIGNEES = 8
-    CREATE_TASK_CHANGE_ESTIMATE = 9
-    CREATE_TASK_CHANGE_ATTACHMENT = 10
-    CREATE_TASK_CHANGE_DUE_DATE = 11
-    DEPARTMENT_SELECTION_MENU = 12
-    
-    EDIT_USER_NAME = 13
-    EDIT_USER_SURNAME = 14
-    EDIT_USER_MANAGER = 15
-    EDIT_USER_PHONE = 16
-    EDIT_USER_OPTIONALS = 17
-    EDIT_USER_OPTIONALS_USER_SELECTED = 18
-    EDIT_USER_PREVIEW = 19
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -162,6 +148,7 @@ def make_main_menu(is_administrator):
     item00 = types.KeyboardButton(localization.EditProfile)
     item1 = types.KeyboardButton(localization.CreateTask)
     item2 = types.KeyboardButton(localization.ViewTasks)
+    item3 = types.KeyboardButton(localization.ViewMyTasks)
     item4 = types.KeyboardButton(localization.ReportError)
     
     if is_administrator:
@@ -170,9 +157,9 @@ def make_main_menu(is_administrator):
         markup.add(item0)
 
     if is_administrator:
-        markup.add(item1, item2)
+        markup.add(item1, item2, item3)
     else:
-        markup.add(item2)
+        markup.add(item2, item3)
     
     markup.add(item4)
     return markup
@@ -180,20 +167,20 @@ def make_main_menu(is_administrator):
 def preview_profile(chat_id, id):
     username = get_member_username_from_id(id)
     _, response = query_db("SELECT * FROM members WHERE Telegram = %s", (username,))
-    managerName = "None"
-    try:
-        managerName = get_full_name_from_member_id(response[0][7])
-    except:
-        pass
-    bot.send_message(chat_id, localization.ProfileString.format(response[0][1], response[0][2], response[0][3], response[0][4], response[0][5], response[0][6], managerName))
+    managerName = get_full_name_from_member_id(response[0][7])
+    administrator = "Yes" if is_current_user_administrator(id) else "No"
+    bot.send_message(chat_id, localization.ProfileString.format(response[0][1], response[0][2], response[0][3], response[0][4], response[0][5], response[0][6], managerName, administrator))
 
 def main_menu_handler(message):
     set_state(message.chat.id, States.MAIN_MENU)
     if message.text == localization.CreateTask:
         create_task(get_state(message.chat.id), message)
     elif message.text == localization.ViewTasks:
-        show_tasks_as_buttons(message)
+        show_tasks_as_buttons(message, False)
+    elif message.text == localization.ViewMyTasks:
+        show_tasks_as_buttons(message, True)
     elif message.text == localization.ReportError:
+        set_state(message.from_user.id, States.REPORTING_ISSUE)
         bot.send_message(message.chat.id, localization.NothingWorks)
     elif message.text == localization.ViewProfile:
         preview_profile(message.chat.id, message.from_user.id)
@@ -210,10 +197,13 @@ def render_main_menu(message):
     bot.send_message(message.chat.id, localization.ChooseAction, reply_markup=markup)
 
 
-def show_tasks_as_buttons(message):
+def show_tasks_as_buttons(message, filter_by_user=False):
     markup = telebot.types.InlineKeyboardMarkup()
-    description, response = query_db("SELECT * FROM tasks", None)
-    
+    if filter_by_user:
+        _, response = query_db("SELECT tasks.* FROM tasks JOIN users_tasks ON tasks.TaskID = users_tasks.TaskID WHERE users_tasks.ID = %s; ", (message.from_user.id,))
+    else:
+        _, response = query_db("SELECT * FROM tasks", None)
+
     if response != [] :
         i = 1
         for elem in response:
@@ -321,6 +311,10 @@ def text_message_handler(message):
                 edit_user(current_menu, message)
             case States.EDIT_USER_PREVIEW:
                 edit_user(current_menu, message)
+            case States.REPORTING_ISSUE:
+                set_state(message.from_user.id, States.MAIN_MENU)
+                query_db("INSERT INTO issues (ReporterID, Description) VALUES (%s, %s)", (message.from_user.id, message.text))
+                bot.send_message(message.chat.id, "Your issue was reported to an administrator.", reply_markup=make_main_menu(is_current_user_administrator(message.from_user.id)))
             case _:
                 print("Invalid state {}".format(current_menu))
 
@@ -346,7 +340,7 @@ def create_cancel_approve_menu():
 
 def create_edit_user_list(message):
     markup = telebot.types.InlineKeyboardMarkup()
-    description, response = query_db("SELECT * FROM members", None)
+    _, response = query_db("SELECT * FROM members", None)
     
     if response != [] :
         i = 1
@@ -419,10 +413,17 @@ def execute_create_task(task, message):
         return
     task.creation_date = datetime.datetime.now()
     task.author = message.from_user.id
-    query_db(
+    _, response = query_db(
         "INSERT INTO tasks (TaskName, TaskDescription, AuthorID, CreationDate, DueDate, Estimate, Attachment) VALUES (%s, %s, %s, %s, %s, %s, %s)",
         (task.name, task.description, task.author, task.creation_date, task.due_date, task.estimate,
          ' '.join([attachment[0] + " " + attachment[1] for attachment in task.attachments])))
+    _, response = query_db("SELECT LAST_INSERT_ID() AS last_id", None)
+    print (task.assignees)
+    print ([get_id_from_username(el) for el in task.assignees])
+    for assignee in task.assignees:
+        if response:
+            print("Inserting", response[0][0], message.from_user.id)
+            query_db("INSERT INTO users_tasks (ID, TaskID) VALUES (%s, %s)", (message.from_user.id, response[0][0]))
     send_task_to_members(task)
 
 
