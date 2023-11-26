@@ -685,6 +685,9 @@ def handle_edit_user_optionals_choice(message):
             render_main_menu(message)
 
 def edit_user(current_menu, message):
+    if message.text == localization.Back:
+        execute_cancel_menu(message)
+
     match current_menu:
         case States.MAIN_MENU:
             set_state(message.chat.id, States.EDIT_USER_OPTIONALS)
@@ -693,16 +696,13 @@ def edit_user(current_menu, message):
         case States.EDIT_USER_OPTIONALS_USER_SELECTED:
             handle_edit_user_optionals_choice(message)
         case States.EDIT_USER_NAME:
-            if message.text != localization.Back:
-                query_db("UPDATE members SET Name = %s WHERE MemberID = %s", (message.text, get_currently_edited_user(message.chat.id)))
+            query_db("UPDATE members SET Name = %s WHERE MemberID = %s", (message.text, get_currently_edited_user(message.chat.id)))
             show_edit_user(message)
         case States.EDIT_USER_SURNAME:
-            if message.text != localization.Back:
-                query_db("UPDATE members SET Surname = %s WHERE MemberID = %s", (message.text, get_currently_edited_user(message.chat.id)))
+            query_db("UPDATE members SET Surname = %s WHERE MemberID = %s", (message.text, get_currently_edited_user(message.chat.id)))
             show_edit_user(message)
         case States.EDIT_USER_PHONE:
-            if message.text != localization.Back:
-                query_db("UPDATE members SET Phone = %s WHERE MemberID = %s", (message.text, get_currently_edited_user(message.chat.id)))
+            query_db("UPDATE members SET Phone = %s WHERE MemberID = %s", (message.text, get_currently_edited_user(message.chat.id)))
             show_edit_user(message)
         case _:
             print("Unknown state: " + str(current_menu))
