@@ -25,12 +25,13 @@ def get_member_username_from_id(id):
     return response[0][1]
 
 def get_id_from_username(username):
-    _, response = query_db("""SELECT * FROM users_id WHERE Username = "%s";""", ('@' + username,))
-
+    description, response = query_db("SELECT * FROM users_id WHERE Username = \"%s\" ", ('@' + username,))
+    print("Description:", description)
+    print("Response:", response)
     if len(response) == 0:
         print("Couldn't retrieve ID for user with Username: {}".format('@' + username))
         return None  # You might want to handle this case differently based on your requirements
-
+    
     return response[0][0]  # Assuming UserID is in the first position in the response
 
 
@@ -67,3 +68,8 @@ def update_id_username_relation(message):
     else:
         query_db("INSERT INTO users_id (UserID, Username) VALUES (%s, @%s)",
                  (message.from_user.id, message.from_user.username))
+
+def get_list_of_assignees_for_task(id):
+    _, response = query_db("SELECT ID FROM users_tasks WHERE TaskID = %s", (id,))
+    
+    return [get_member_username_from_id(el[0]) for el in response]
