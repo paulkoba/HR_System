@@ -25,14 +25,20 @@ def get_member_username_from_id(id):
     return response[0][1]
 
 def get_id_from_username(username):
-    description, response = query_db("SELECT * FROM users_id WHERE Username = \"%s\" ", ('@' + username,))
+    # Assuming query_db returns a tuple with the first element as the description and the second as the response
+    description, response = query_db("SELECT * FROM users_id WHERE Username = %s", ('@' + username,))
+
     print("Description:", description)
     print("Response:", response)
+
     if len(response) == 0:
         print("Couldn't retrieve ID for user with Username: {}".format('@' + username))
         return None  # You might want to handle this case differently based on your requirements
-    
-    return response[0][0]  # Assuming UserID is in the first position in the response
+
+    # Assuming response is a tuple of dictionaries, and 'UserID' is the key for the user ID
+    user_id = response[0][0]  # Replace 'UserID' with the actual column name in your database
+    return user_id
+
 
 
 def get_full_name_from_member_id(id):

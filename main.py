@@ -255,7 +255,7 @@ def preview_task(task, chat_id):
 
     formatted = (
                 "<b>{}</b>\n\n{}\n\n" + localization.Deadline + ": <i>{}</i>\n\n" + localization.Cost + ": <b>{}</b>\n\n" + localization.Author + ": <i>{}</i>\n\n" + localization.Assignees + ": {}\n\n").format(
-        task.name, task.description, task.due_date, task.estimate, get_member_username_from_id(task.author), ", ".join(['@' + assignee for assignee in task.assignees]) if task.assignees  == "" else localization.LocalizationNone)
+        task.name, task.description, task.due_date, task.estimate, get_member_username_from_id(task.author), ", ".join(['@' + assignee for assignee in task.assignees]) if not task.assignees  == "" else localization.LocalizationNone)
 
     bot.send_message(chat_id, formatted, parse_mode='HTML')
 
@@ -424,13 +424,13 @@ def execute_create_task(task, message):
         "INSERT INTO tasks (TaskName, TaskDescription, AuthorID, CreationDate, DueDate, Estimate, Attachment) VALUES (%s, %s, %s, %s, %s, %s, %s)",
         (task.name, task.description, task.author, task.creation_date, task.due_date, task.estimate,
          ' '.join([attachment[0] + " " + attachment[1] for attachment in task.attachments])))
-    description, response = query_db("SELECT LAST_INSERT_ID() AS last_id", None)
+    description, task_id = query_db("SELECT LAST_INSERT_ID() AS last_id", None)
     print (task.assignees)
-    print ([get_id_from_username(el) for el in task.assignees])
     for assignee in task.assignees:
-        if response:
-            print("Inserting", response[0][0], message.from_user.id)
-            query_db("INSERT INTO users_tasks (ID, TaskID) VALUES (%s, %s)", (message.from_user.id, response[0][0]))
+        user_id = get_id_from_username(assignee)
+        if user_id:
+            print("Inserting", user_id, task_id[0][0])
+            query_db("INSERT INTO users_tasks (ID, TaskID) VALUES (%s, %s)", (user_id, task_id[0][0]))
     send_task_to_members(task)
 
 
